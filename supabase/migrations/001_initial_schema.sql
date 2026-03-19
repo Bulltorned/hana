@@ -318,19 +318,25 @@ CREATE TRIGGER on_tenant_created
   FOR EACH ROW EXECUTE FUNCTION create_tenant_settings();
 
 -- Auto-create profile on auth.users signup
+-- NOTE: The trigger on auth.users may fail in Supabase SQL Editor due to
+-- schema permissions. If so, run the function creation separately, then
+-- create the trigger via the Supabase Dashboard > Database > Triggers.
+-- Alternatively, create profiles manually after user creation.
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO profiles (id, full_name, role)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
-    COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'client_hrd')
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+    'client_hrd'
   );
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- This trigger may require running via Supabase CLI or Dashboard
+-- if the SQL Editor lacks permission on auth schema
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION handle_new_user();
