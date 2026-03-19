@@ -28,6 +28,7 @@ import { ExpiryBadge } from "@/components/employees/expiry-badge";
 import { EmployeeSidePanel } from "@/components/employees/employee-side-panel";
 import { CSVImportDialog } from "@/components/employees/csv-import-dialog";
 import { TenantSelector } from "@/components/shared/tenant-selector";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { Employee } from "@/lib/types";
 import { Plus, Search, Users } from "lucide-react";
@@ -120,6 +121,7 @@ export default function EmployeesPage() {
       {/* Stats Strip */}
       <EmployeeStatsStrip
         employees={employees}
+        loading={tenantLoading || loading}
         onFilterClick={(filter) => {
           if (filter === "expiring") {
             // Could add special filter later
@@ -221,8 +223,24 @@ export default function EmployeesPage() {
       {/* Table */}
       <div className="glass rounded-[var(--radius-xl)] overflow-hidden">
         {tenantLoading || loading ? (
-          <div className="p-12 text-center text-tertiary text-sm">
-            Memuat data...
+          <div className="p-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 py-3">
+                <Skeleton className="h-4 w-4 rounded" />
+                <div className="flex items-center gap-2.5">
+                  <Skeleton className="h-8 w-8 rounded-full" />
+                  <div>
+                    <Skeleton className="h-3.5 w-28 mb-1" />
+                    <Skeleton className="h-2.5 w-16" />
+                  </div>
+                </div>
+                <Skeleton className="h-3 w-24 flex-1" />
+                <Skeleton className="h-5 w-14 rounded-full" />
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-16" />
+              </div>
+            ))}
           </div>
         ) : !selectedTenantId ? (
           <div className="p-12 text-center text-tertiary text-sm">
