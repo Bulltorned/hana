@@ -75,27 +75,118 @@ export interface AgentActivity {
   created_at: string;
 }
 
+export interface AgentHeartbeat {
+  id: string;
+  tenant_id: string;
+  agent_type: AgentType;
+  status: "online" | "offline" | "error";
+  last_seen: string;
+  message_count: number;
+  model: string | null;
+  uptime_seconds: number;
+  metadata: Record<string, unknown>;
+}
+
+// Pending Tasks
+export type TaskStatus = "pending" | "processing" | "completed" | "failed";
+export type TaskType =
+  | "generate_document"
+  | "compliance_check"
+  | "send_reminder"
+  | "assessment_action"
+  | "chat_message"
+  | "custom";
+
+export interface PendingTask {
+  id: string;
+  tenant_id: string;
+  task_type: TaskType;
+  status: TaskStatus;
+  priority: number;
+  payload: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  created_by: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 // Compliance
+export type ComplianceStatus = "upcoming" | "due_soon" | "overdue" | "completed" | "skipped";
+export type ComplianceType =
+  | "bpjs_kesehatan"
+  | "bpjs_ketenagakerjaan"
+  | "pph21_setor"
+  | "pph21_lapor"
+  | "thr"
+  | "pkwt_expiry"
+  | "bpjs_registration"
+  | "other";
+
 export interface ComplianceItem {
   id: string;
   tenant_id: string;
-  type: string;
+  type: ComplianceType;
+  title: string;
+  description: string | null;
   deadline: string;
-  status: "pending" | "in_progress" | "done";
+  status: ComplianceStatus;
+  employee_id: string | null;
+  amount: number | null;
   completed_at: string | null;
-  output_file_url: string | null;
+  completed_by: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
+  // joined
+  employee?: Employee;
 }
 
 // Documents
-export interface Document {
+export type DocStatus = "draft" | "generating" | "ready" | "signed" | "archived";
+export type DocType =
+  | "pkwt"
+  | "pkwtt"
+  | "sp1"
+  | "sp2"
+  | "sp3"
+  | "phk"
+  | "offer_letter"
+  | "surat_keterangan"
+  | "surat_mutasi"
+  | "other";
+
+export interface DocumentRequest {
   id: string;
   tenant_id: string;
   employee_id: string | null;
-  doc_type: string;
-  file_url: string;
-  generated_at: string;
-  generated_by: AgentType;
+  doc_type: DocType;
+  status: DocStatus;
+  title: string;
+  variables: Record<string, unknown>;
+  output_url: string | null;
+  output_format: string;
+  requested_by: string | null;
+  generated_at: string | null;
+  task_id: string | null;
+  created_at: string;
+  updated_at: string;
+  // joined
+  employee?: Employee;
+}
+
+// Chat
+export type ChatRole = "user" | "assistant";
+
+export interface ChatMessage {
+  id: string;
+  tenant_id: string;
+  session_id: string;
+  role: ChatRole;
+  content: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
 }
 
 // Assessment
