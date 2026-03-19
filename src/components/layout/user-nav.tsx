@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -42,24 +43,30 @@ export function UserNav() {
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56 glass">
-        <DropdownMenuLabel className="font-normal">
-          <div className="text-sm font-medium">{profile?.full_name ?? "User"}</div>
-          <div className="text-xs text-tertiary">{user?.email}</div>
-        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="font-normal">
+            <div className="text-sm font-medium">{profile?.full_name ?? "User"}</div>
+            <div className="text-xs text-tertiary">{user?.email}</div>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push("/settings")}>
-          <Settings className="mr-2 h-4 w-4" />
-          Pengaturan
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => router.push("/billing")}>
-          <User className="mr-2 h-4 w-4" />
-          Subscription
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => router.push("/settings")}>
+            <Settings className="mr-2 h-4 w-4" />
+            Pengaturan
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push("/billing")}>
+            <User className="mr-2 h-4 w-4" />
+            Subscription
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut} className="text-urgent">
-          <LogOut className="mr-2 h-4 w-4" />
-          Keluar
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={handleSignOut} className="text-urgent">
+            <LogOut className="mr-2 h-4 w-4" />
+            Keluar
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
