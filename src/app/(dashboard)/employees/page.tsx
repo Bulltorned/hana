@@ -27,13 +27,20 @@ import { ContractStatusChip } from "@/components/employees/contract-status-chip"
 import { ExpiryBadge } from "@/components/employees/expiry-badge";
 import { EmployeeSidePanel } from "@/components/employees/employee-side-panel";
 import { CSVImportDialog } from "@/components/employees/csv-import-dialog";
+import { TenantSelector } from "@/components/shared/tenant-selector";
+import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { Employee } from "@/lib/types";
 import { Plus, Search, Users } from "lucide-react";
 
-// Placeholder tenant_id — will be dynamic once tenant context is wired
-const DEMO_TENANT_ID = "00000000-0000-0000-0000-000000000000";
-
 export default function EmployeesPage() {
+  const {
+    tenants,
+    selectedTenantId,
+    setSelectedTenantId,
+    isOperator,
+    loading: tenantLoading,
+  } = useTenantContext();
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -44,8 +51,15 @@ export default function EmployeesPage() {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
   const fetchEmployees = useCallback(async () => {
+    if (!selectedTenantId) {
+      setEmployees([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       const params = new URLSearchParams();
+      params.set("tenant_id", selectedTenantId);
       if (search) params.set("search", search);
       if (filterStatus !== "all") params.set("status_kontrak", filterStatus);
       if (filterDivisi !== "all") params.set("divisi", filterDivisi);
@@ -57,12 +71,14 @@ export default function EmployeesPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, filterStatus, filterDivisi]);
+  }, [selectedTenantId, search, filterStatus, filterDivisi]);
 
   useEffect(() => {
+    if (tenantLoading) return;
+    setLoading(true);
     const timer = setTimeout(fetchEmployees, 300);
     return () => clearTimeout(timer);
-  }, [fetchEmployees]);
+  }, [fetchEmployees, tenantLoading]);
 
   const divisions = Array.from(new Set(employees.map((e) => e.divisi).filter(Boolean)));
 
@@ -117,6 +133,15 @@ export default function EmployeesPage() {
 
       {/* Toolbar */}
       <div className="glass rounded-[var(--radius-xl)] p-4 flex items-center gap-3 flex-wrap">
+        {/* Tenant selector for operators */}
+        {isOperator && (
+          <TenantSelector
+            tenants={tenants}
+            selectedTenantId={selectedTenantId}
+            onSelect={setSelectedTenantId}
+          />
+        )}
+
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-tertiary" />
           <Input
@@ -153,16 +178,19 @@ export default function EmployeesPage() {
           </SelectContent>
         </Select>
 
-        <CSVImportDialog
-          tenantId={DEMO_TENANT_ID}
-          onSuccess={fetchEmployees}
-        />
+        {selectedTenantId && (
+          <CSVImportDialog
+            tenantId={selectedTenantId}
+            onSuccess={fetchEmployees}
+          />
+        )}
 
         <Button
           onClick={() => {
             setEditingEmployee(null);
             setPanelOpen(true);
           }}
+          disabled={!selectedTenantId}
           className="bg-gradient-to-r from-brand-indigo to-brand-violet text-white shadow-lg shadow-brand-indigo/30"
         >
           <Plus className="h-4 w-4 mr-1.5" />
@@ -192,9 +220,17 @@ export default function EmployeesPage() {
 
       {/* Table */}
       <div className="glass rounded-[var(--radius-xl)] overflow-hidden">
-        {loading ? (
+        {tenantLoading || loading ? (
           <div className="p-12 text-center text-tertiary text-sm">
             Memuat data...
+          </div>
+        ) : !selectedTenantId ? (
+          <div className="p-12 text-center text-tertiary text-sm">
+            <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p>Pilih tenant terlebih dahulu.</p>
+            <p className="text-xs mt-1">
+              Buat tenant baru di halaman Tenants jika belum ada.
+            </p>
           </div>
         ) : employees.length === 0 ? (
           <div className="p-12 text-center text-tertiary text-sm">
@@ -294,13 +330,15 @@ export default function EmployeesPage() {
       </div>
 
       {/* Side Panel */}
-      <EmployeeSidePanel
-        open={panelOpen}
-        onOpenChange={setPanelOpen}
-        employee={editingEmployee}
-        tenantId={DEMO_TENANT_ID}
-        onSuccess={fetchEmployees}
-      />
+      {selectedTenantId && (
+        <EmployeeSidePanel
+          open={panelOpen}
+          onOpenChange={setPanelOpen}
+          employee={editingEmployee}
+          tenantId={selectedTenantId}
+          onSuccess={fetchEmployees}
+        />
+      )}
     </div>
   );
 }

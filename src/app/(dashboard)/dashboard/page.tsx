@@ -1,8 +1,35 @@
-import { Users, AlertTriangle, FileText, BarChart3 } from "lucide-react";
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  Users,
+  AlertTriangle,
+  FileText,
+  ShieldCheck,
+  Building2,
+} from "lucide-react";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { AgentStatusPills } from "@/components/dashboard/agent-status-pills";
 
+interface DashboardStats {
+  totalEmployees: number;
+  totalTenants: number;
+  activeTenants: number;
+  expiringContracts: number;
+  compliancePending: number;
+  docsThisMonth: number;
+}
+
 export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+
+  useEffect(() => {
+    fetch("/api/dashboard/stats")
+      .then((res) => res.json())
+      .then(setStats)
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="flex flex-col gap-3">
       {/* Stats Grid */}
@@ -10,35 +37,47 @@ export default function DashboardPage() {
         <StatCard
           icon={Users}
           label="Total Karyawan"
-          value={0}
-          delta="Mulai tambah karyawan"
-          deltaType="neutral"
+          value={stats?.totalEmployees ?? 0}
+          delta={
+            stats?.expiringContracts
+              ? `${stats.expiringContracts} kontrak akan habis`
+              : "Semua kontrak aman"
+          }
+          deltaType={stats?.expiringContracts ? "down" : "neutral"}
           accentColor="#4F7BF7"
           iconBg="rgba(79,123,247,0.12)"
         />
         <StatCard
+          icon={Building2}
+          label="Total Tenant"
+          value={stats?.totalTenants ?? 0}
+          delta={
+            stats?.activeTenants
+              ? `${stats.activeTenants} aktif`
+              : "Belum ada tenant"
+          }
+          deltaType={stats?.activeTenants ? "up" : "neutral"}
+          accentColor="#26C6A6"
+          iconBg="rgba(38,198,166,0.12)"
+        />
+        <StatCard
           icon={AlertTriangle}
           label="Compliance Pending"
-          value={0}
-          delta="Belum ada data"
-          deltaType="neutral"
+          value={stats?.compliancePending ?? 0}
+          delta={
+            stats?.compliancePending
+              ? "Perlu ditangani"
+              : "Tidak ada yang pending"
+          }
+          deltaType={stats?.compliancePending ? "down" : "neutral"}
           accentColor="#F76B4F"
           iconBg="rgba(247,107,79,0.12)"
         />
         <StatCard
           icon={FileText}
           label="Dokumen Bulan Ini"
-          value={0}
-          delta="Belum ada dokumen"
-          deltaType="neutral"
-          accentColor="#26C6A6"
-          iconBg="rgba(38,198,166,0.12)"
-        />
-        <StatCard
-          icon={BarChart3}
-          label="Response Rate 360"
-          value="—"
-          delta="Belum ada assessment"
+          value={stats?.docsThisMonth ?? 0}
+          delta="Dokumen yang di-generate"
           deltaType="neutral"
           accentColor="#7C5CF6"
           iconBg="rgba(124,92,246,0.12)"
@@ -85,6 +124,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-// Import needed for the compliance placeholder
-import { ShieldCheck } from "lucide-react";

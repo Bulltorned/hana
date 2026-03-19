@@ -49,7 +49,7 @@ export function StatCard({
                 : "bg-muted text-muted-foreground"
           }`}
         >
-          {deltaType === "up" ? "↑" : deltaType === "down" ? "↑" : ""} {delta}
+          {deltaType === "up" ? "↑" : deltaType === "down" ? "↓" : ""} {delta}
         </div>
       )}
     </div>

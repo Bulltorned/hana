@@ -1,10 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { MobileSidebar } from "@/components/layout/mobile-sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
+const pageTitles: Record<string, { title: string; subtitle?: string }> = {
+  "/dashboard": { title: "Dashboard", subtitle: "Ringkasan data & aktivitas" },
+  "/employees": { title: "Karyawan", subtitle: "Kelola data karyawan" },
+  "/tenants": { title: "Tenants", subtitle: "Kelola tenant terdaftar" },
+  "/compliance": { title: "Compliance", subtitle: "Kewajiban & kepatuhan" },
+  "/assessment": { title: "Assessment 360°", subtitle: "Evaluasi kinerja" },
+  "/documents": { title: "Dokumen", subtitle: "Surat & dokumen HR" },
+  "/hr-agent": { title: "HR Agent", subtitle: "AI assistant untuk HR" },
+  "/hana-agent": { title: "Hana (Staff)", subtitle: "AI assistant untuk karyawan" },
+  "/settings": { title: "Pengaturan", subtitle: "Konfigurasi perusahaan" },
+  "/billing": { title: "Subscription", subtitle: "Paket & tagihan" },
+};
 
 export default function DashboardLayout({
   children,
@@ -12,6 +26,13 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+
+  // Match pathname to page title (supports /tenants/[id] etc.)
+  const pageKey = Object.keys(pageTitles).find(
+    (key) => pathname === key || pathname.startsWith(key + "/")
+  );
+  const { title, subtitle } = pageTitles[pageKey ?? "/dashboard"] ?? pageTitles["/dashboard"];
 
   return (
     <TooltipProvider>
@@ -62,7 +83,8 @@ export default function DashboardLayout({
           {/* Main content */}
           <main className="flex-1 flex flex-col gap-3 min-w-0">
             <Topbar
-              title="Dashboard"
+              title={title}
+              subtitle={subtitle}
               onMobileMenuToggle={() => setMobileOpen(true)}
             />
             <div className="flex-1">{children}</div>
