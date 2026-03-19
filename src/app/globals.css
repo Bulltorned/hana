@@ -4,90 +4,169 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    /* Background — blue-gray tinted per reference */
+    --background: 228 24% 95%; /* #F0F2F8 */
+    --foreground: 230 26% 14%; /* #1A1D2E */
+
+    --card: 0 0% 100%;
+    --card-foreground: 230 26% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 230 26% 14%;
+
+    /* Indigo #4F7BF7 */
+    --primary: 224 92% 64%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Violet #7C5CF6 */
+    --secondary: 252 90% 66%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Text hierarchy per reference */
+    --muted: 228 20% 96%;
+    --muted-foreground: 230 16% 42%; /* #5A5F7A */
+
+    --accent: 228 20% 96%;
+    --accent-foreground: 230 26% 14%;
+
+    /* Coral #F76B4F */
+    --destructive: 10 92% 64%;
+
+    --border: 228 13% 91%;
+    --input: 228 13% 91%;
+    --ring: 224 92% 64%;
+
+    /* Teal #26C6A6 */
+    --success: 167 68% 46%;
+    --success-foreground: 0 0% 100%;
+
+    /* Amber #F7C94F */
+    --warning: 43 92% 64%;
+    --warning-foreground: 38 92% 20%;
+
+    /* Coral #F76B4F */
+    --urgent: 10 92% 64%;
+    --urgent-foreground: 0 0% 100%;
+
+    /* Text tertiary — #9499B8 */
+    --text-tertiary: 233 18% 65%;
+
+    /* Chart colors */
+    --chart-1: 224 92% 64%;
+    --chart-2: 252 90% 66%;
+    --chart-3: 167 68% 46%;
+    --chart-4: 10 92% 64%;
+    --chart-5: 43 92% 64%;
+
+    /* Radius scale per reference: sm=12, md=18, lg=24, xl=32 */
+    --radius: 0.75rem;
+    --radius-sm: 12px;
+    --radius-md: 18px;
+    --radius-lg: 24px;
+    --radius-xl: 32px;
+
+    /* Glass tokens per reference */
+    --glass-bg: rgba(255, 255, 255, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.85);
+    --glass-shadow: 0 8px 32px rgba(80, 90, 160, 0.10), 0 1.5px 0 rgba(255, 255, 255, 0.9) inset;
+    --glass-shadow-hover: 0 16px 48px rgba(80, 90, 160, 0.16), 0 1.5px 0 rgba(255, 255, 255, 0.9) inset;
+
+    /* Sidebar */
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 230 26% 14%;
+    --sidebar-primary: 224 92% 64%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 228 20% 96%;
+    --sidebar-accent-foreground: 230 26% 14%;
+    --sidebar-border: 228 13% 91%;
+    --sidebar-ring: 224 92% 64%;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  html {
+    @apply font-sans;
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
-}
 
-@layer base {
-  :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.809 0.105 251.813);
-    --chart-2: oklch(0.623 0.214 259.815);
-    --chart-3: oklch(0.546 0.245 262.881);
-    --chart-4: oklch(0.488 0.243 264.376);
-    --chart-5: oklch(0.424 0.199 265.638);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  /* Text hierarchy */
+  .text-secondary {
+    color: hsl(var(--muted-foreground));
   }
-  .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.809 0.105 251.813);
-    --chart-2: oklch(0.623 0.214 259.815);
-    --chart-3: oklch(0.546 0.245 262.881);
-    --chart-4: oklch(0.488 0.243 264.376);
-    --chart-5: oklch(0.424 0.199 265.638);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+
+  .text-tertiary {
+    color: hsl(var(--text-tertiary));
   }
-  .theme {
-    --font-sans: var(--font-sans);
+
+  /* Glass UI utilities — exact match to reference */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
   }
-  * {
-    @apply border-border outline-ring/50;
+
+  .glass:hover {
+    box-shadow: var(--glass-shadow-hover);
   }
-  body {
-    @apply bg-background text-foreground;
+
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: var(--radius-xl);
   }
-  html {
-    @apply font-sans;
+
+  .glass-card:hover {
+    box-shadow: var(--glass-shadow-hover);
+  }
+
+  .glass-sidebar {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: var(--radius-xl);
+  }
+
+  /* Ambient blobs per reference */
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /* Dot indicators for compliance */
+  .dot-red {
+    background: #F76B4F;
+    box-shadow: 0 0 8px rgba(247, 107, 79, 0.5);
+  }
+
+  .dot-amber {
+    background: #F7C94F;
+    box-shadow: 0 0 8px rgba(247, 201, 79, 0.5);
+  }
+
+  .dot-green {
+    background: #26C6A6;
+    box-shadow: 0 0 8px rgba(38, 198, 166, 0.5);
   }
 }
