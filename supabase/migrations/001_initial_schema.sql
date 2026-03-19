@@ -169,15 +169,15 @@ ALTER TABLE agent_activity ENABLE ROW LEVEL SECURITY;
 ALTER TABLE token_usage ENABLE ROW LEVEL SECURITY;
 
 -- Helper function: get current user's role
-CREATE OR REPLACE FUNCTION auth.user_role()
+CREATE OR REPLACE FUNCTION public.get_user_role()
 RETURNS user_role AS $$
-  SELECT role FROM profiles WHERE id = auth.uid()
+  SELECT role FROM public.profiles WHERE id = auth.uid()
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- Helper function: get current user's tenant_id
-CREATE OR REPLACE FUNCTION auth.user_tenant_id()
+CREATE OR REPLACE FUNCTION public.get_user_tenant_id()
 RETURNS UUID AS $$
-  SELECT tenant_id FROM profiles WHERE id = auth.uid()
+  SELECT tenant_id FROM public.profiles WHERE id = auth.uid()
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- ---- Profiles ----
@@ -187,101 +187,101 @@ CREATE POLICY "Users can view own profile"
 
 CREATE POLICY "Operators can view all profiles"
   ON profiles FOR SELECT
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Operators can manage all profiles"
   ON profiles FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 -- ---- Tenants ----
 CREATE POLICY "Operators can manage all tenants"
   ON tenants FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can view own tenant"
   ON tenants FOR SELECT
-  USING (id = auth.user_tenant_id());
+  USING (id = public.get_user_tenant_id());
 
 -- ---- Tenant Settings ----
 CREATE POLICY "Operators can manage all tenant settings"
   ON tenant_settings FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can view own tenant settings"
   ON tenant_settings FOR SELECT
-  USING (tenant_id = auth.user_tenant_id());
+  USING (tenant_id = public.get_user_tenant_id());
 
 CREATE POLICY "Client HRD can update own tenant settings"
   ON tenant_settings FOR UPDATE
-  USING (tenant_id = auth.user_tenant_id());
+  USING (tenant_id = public.get_user_tenant_id());
 
 -- ---- Employees ----
 CREATE POLICY "Operators can manage all employees"
   ON employees FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can manage own tenant employees"
   ON employees FOR ALL
-  USING (tenant_id = auth.user_tenant_id());
+  USING (tenant_id = public.get_user_tenant_id());
 
 -- ---- Compliance Items ----
 CREATE POLICY "Operators can manage all compliance items"
   ON compliance_items FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can view own tenant compliance"
   ON compliance_items FOR SELECT
-  USING (tenant_id = auth.user_tenant_id());
+  USING (tenant_id = public.get_user_tenant_id());
 
 -- ---- Documents ----
 CREATE POLICY "Operators can manage all documents"
   ON documents FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can view own tenant documents"
   ON documents FOR SELECT
-  USING (tenant_id = auth.user_tenant_id());
+  USING (tenant_id = public.get_user_tenant_id());
 
 -- ---- Assessment Cycles ----
 CREATE POLICY "Operators can manage all assessment cycles"
   ON assessment_cycles FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can manage own tenant assessments"
   ON assessment_cycles FOR ALL
-  USING (tenant_id = auth.user_tenant_id());
+  USING (tenant_id = public.get_user_tenant_id());
 
 -- ---- Assessment Responses ----
 CREATE POLICY "Operators can manage all responses"
   ON assessment_responses FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can manage own tenant responses"
   ON assessment_responses FOR ALL
   USING (
     cycle_id IN (
       SELECT id FROM assessment_cycles
-      WHERE tenant_id = auth.user_tenant_id()
+      WHERE tenant_id = public.get_user_tenant_id()
     )
   );
 
 -- ---- Agent Activity ----
 CREATE POLICY "Operators can view all activity"
   ON agent_activity FOR SELECT
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can view own tenant activity"
   ON agent_activity FOR SELECT
-  USING (tenant_id = auth.user_tenant_id());
+  USING (tenant_id = public.get_user_tenant_id());
 
 -- ---- Token Usage ----
 CREATE POLICY "Operators can manage all token usage"
   ON token_usage FOR ALL
-  USING (auth.user_role() = 'operator');
+  USING (public.get_user_role() = 'operator');
 
 CREATE POLICY "Client HRD can view own tenant usage"
   ON token_usage FOR SELECT
-  USING (tenant_id = auth.user_tenant_id());
+  USING (tenant_id = public.get_user_tenant_id());
 
 -- ============================================
 -- Triggers
