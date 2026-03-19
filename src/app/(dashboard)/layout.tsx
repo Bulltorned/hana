@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { MobileSidebar } from "@/components/layout/mobile-sidebar";
+import { RouteProgress } from "@/components/layout/route-progress";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const pageTitles: Record<string, { title: string; subtitle?: string }> = {
@@ -36,6 +37,7 @@ export default function DashboardLayout({
 
   return (
     <TooltipProvider>
+      <RouteProgress />
       <div className="min-h-screen relative">
         {/* Ambient background blobs */}
         <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
