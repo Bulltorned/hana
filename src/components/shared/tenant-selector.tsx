@@ -38,9 +38,13 @@ export function TenantSelector({
       onValueChange={(v) => v && onSelect(v)}
       disabled={disabled}
     >
-      <SelectTrigger className="w-[200px] h-9 text-xs">
-        <Building2 className="h-3.5 w-3.5 mr-1.5 text-tertiary" />
-        <SelectValue placeholder="Pilih Tenant" />
+      <SelectTrigger className="w-[220px] h-9 text-xs">
+        <Building2 className="h-3.5 w-3.5 mr-1.5 text-tertiary shrink-0" />
+        <span className="truncate">
+          {selectedTenantId
+            ? tenants.find((t) => t.id === selectedTenantId)?.name ?? "Pilih Tenant"
+            : "Pilih Tenant"}
+        </span>
       </SelectTrigger>
       <SelectContent>
         {tenants.map((tenant) => (
