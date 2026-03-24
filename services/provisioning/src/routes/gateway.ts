@@ -8,15 +8,16 @@ import {
 import { recordHeartbeat } from "../services/heartbeat.js";
 import {
   getContainerStatus,
-  getOpenClawGatewayUrl,
+  openclawGatewayCall,
 } from "../lib/docker.js";
 import { supabase } from "../lib/supabase.js";
 import { logger } from "../lib/logger.js";
+import { randomUUID } from "crypto";
 
 export const gatewayRouter = Router();
 
 // ══════════════════════════════════════════════════════
-// Routes called BY the dashboard (forwarded to OpenClaw)
+// Dashboard → OpenClaw (main chat flow)
 // ══════════════════════════════════════════════════════
 
 // ── Send message to OpenClaw agent ──────────────────
@@ -42,82 +43,100 @@ gatewayRouter.post("/send", async (req, res) => {
     return;
   }
 
-  // Forward message to OpenClaw gateway
-  const openclawUrl = getOpenClawGatewayUrl(tenant_id);
-
   try {
-    const openclawRes = await fetch(`${openclawUrl}/message`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        channel: "internal",
-        sessionId: session_id,
-      }),
-      signal: AbortSignal.timeout(60_000), // 60s timeout for agent response
-    });
+    // 1. Send message via chat.send
+    const sessionKey = `agent:main:${session_id}`;
+    const idempotencyKey = randomUUID();
 
-    if (!openclawRes.ok) {
-      const errText = await openclawRes.text();
-      logger.error({ tenant_id, error: errText }, "OpenClaw returned error");
-      res.status(502).json({ error: "Agent failed to process message" });
+    const sendResult = await openclawGatewayCall(tenant_id, "chat.send", {
+      sessionKey,
+      idempotencyKey,
+      message,
+    }, { timeout: 10000 });
+
+    logger.info({ tenant_id, sendResult }, "chat.send result");
+
+    // 2. Wait for agent to process, then fetch history
+    // Poll chat.history until we get the assistant response
+    let assistantContent = "";
+    let attempts = 0;
+    const maxAttempts = 30; // 30 * 2s = 60s max wait
+
+    while (attempts < maxAttempts) {
+      await new Promise((r) => setTimeout(r, 2000)); // Wait 2s
+      attempts++;
+
+      const history = await openclawGatewayCall(tenant_id, "chat.history", {
+        sessionKey,
+      }, { timeout: 10000 }) as Record<string, unknown>;
+
+      const messages = (history.messages ?? []) as Array<Record<string, unknown>>;
+
+      // Find the last assistant message with text content (not tool calls)
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (msg.role === "assistant") {
+          const content = msg.content as Array<Record<string, unknown>>;
+          const textBlock = content?.find((c) => c.type === "text");
+          if (textBlock?.text) {
+            assistantContent = textBlock.text as string;
+            break;
+          }
+        }
+      }
+
+      if (assistantContent) break;
+
+      logger.info({ tenant_id, attempts }, "Waiting for agent response...");
+    }
+
+    if (!assistantContent) {
+      res.status(504).json({ error: "Agent did not respond in time" });
       return;
     }
 
-    const result = await openclawRes.json();
-
-    // Save assistant message to chat_messages
+    // 3. Save assistant message to Supabase chat_messages
     const { data: assistantMsg } = await supabase
       .from("chat_messages")
       .insert({
         tenant_id,
         session_id,
         role: "assistant",
-        content: result.response ?? result.message ?? JSON.stringify(result),
-        metadata: { source: "openclaw", raw: result },
+        content: assistantContent,
+        metadata: { source: "openclaw" },
       })
       .select()
       .single();
 
     res.json({ response: assistantMsg });
   } catch (err: any) {
-    if (err.name === "TimeoutError") {
-      logger.error({ tenant_id }, "OpenClaw request timed out (60s)");
-      res.status(504).json({ error: "Agent response timed out" });
-    } else {
-      logger.error({ tenant_id, error: err.message }, "Failed to reach OpenClaw");
-      res.status(502).json({ error: "Cannot reach agent" });
-    }
+    logger.error({ tenant_id, error: err.message }, "Failed to communicate with OpenClaw");
+    res.status(502).json({ error: "Failed to reach agent", detail: err.message });
   }
 });
 
 // ── Get agent status ────────────────────────────────
 gatewayRouter.get("/status/:tenantId", async (req, res) => {
   const { tenantId } = req.params;
-  const openclawUrl = getOpenClawGatewayUrl(tenantId);
 
   try {
-    const openclawRes = await fetch(`${openclawUrl}/status`, {
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (openclawRes.ok) {
-      const status = await openclawRes.json();
-      res.json({ online: true, ...status });
-    } else {
-      res.json({ online: false });
+    const { status } = await getContainerStatus(tenantId);
+    if (status !== "running") {
+      res.json({ online: false, containerStatus: status });
+      return;
     }
+
+    const health = await openclawGatewayCall(tenantId, "health", {}, { timeout: 5000 });
+    res.json({ online: true, ...health as object });
   } catch {
     res.json({ online: false });
   }
 });
 
 // ══════════════════════════════════════════════════════
-// Routes called BY OpenClaw agent (callback pattern)
-// These are still useful for agents writing back results
+// Agent callback routes (backward compat for pending_tasks)
 // ══════════════════════════════════════════════════════
 
-// ── Poll for next task (backward compat) ────────────
 const pollSchema = z.object({
   tenant_id: z.string().uuid(),
   agent_type: z.enum(["hr_agent", "staff_agent"]).default("hr_agent"),
@@ -134,42 +153,24 @@ gatewayRouter.post("/tasks/poll", async (req, res) => {
   res.json({ task });
 });
 
-// ── Complete a task ─────────────────────────────────
-const completeSchema = z.object({
-  result: z.record(z.unknown()),
-});
-
 gatewayRouter.post("/tasks/:taskId/complete", async (req, res) => {
   const { taskId } = req.params;
-  const parsed = completeSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request" });
-    return;
-  }
+  const result = req.body?.result ?? {};
 
   try {
-    await completeTask(taskId, parsed.data.result);
+    await completeTask(taskId, result);
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Failed to complete task" });
   }
 });
 
-// ── Fail a task ─────────────────────────────────────
-const failSchema = z.object({
-  error: z.string(),
-});
-
 gatewayRouter.post("/tasks/:taskId/fail", async (req, res) => {
   const { taskId } = req.params;
-  const parsed = failSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request" });
-    return;
-  }
+  const error = req.body?.error ?? "Unknown error";
 
   try {
-    await failTask(taskId, parsed.data.error);
+    await failTask(taskId, error);
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Failed to fail task" });

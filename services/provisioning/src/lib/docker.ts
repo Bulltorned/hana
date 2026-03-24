@@ -176,3 +176,95 @@ export async function restartContainer(tenantId: string): Promise<void> {
   await container.restart({ t: 10 });
   logger.info({ tenantId, containerId }, "Container restarted");
 }
+
+/**
+ * Execute a command inside a tenant's container and return stdout.
+ */
+export async function execInContainer(
+  tenantId: string,
+  cmd: string[]
+): Promise<string> {
+  const { status, containerId } = await getContainerStatus(tenantId);
+  if (status !== "running" || !containerId) {
+    throw new Error(`Container for tenant ${tenantId} is not running`);
+  }
+
+  const container = docker.getContainer(containerId);
+
+  const exec = await container.exec({
+    Cmd: cmd,
+    AttachStdout: true,
+    AttachStderr: true,
+  });
+
+  const stream = await exec.start({ Detach: false, Tty: false });
+
+  return new Promise<string>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+
+    stream.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+
+    stream.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf-8");
+      // Docker multiplexed stream has 8-byte header per frame
+      // Strip headers to get clean output
+      const lines = raw.split("\n").map((line) => {
+        // Remove docker stream header bytes (first 8 bytes per frame)
+        if (line.length > 8) {
+          const cleaned = line.slice(8);
+          // Only return if it looks like actual content
+          if (cleaned.trim()) return cleaned;
+        }
+        return line;
+      });
+      resolve(lines.join("\n").trim());
+    });
+
+    stream.on("error", reject);
+
+    // Timeout after 90 seconds
+    setTimeout(() => reject(new Error("Container exec timeout")), 90_000);
+  });
+}
+
+/**
+ * Call an OpenClaw gateway RPC method inside a tenant's container.
+ */
+export async function openclawGatewayCall(
+  tenantId: string,
+  method: string,
+  params: Record<string, unknown> = {},
+  options: { timeout?: number; expectFinal?: boolean } = {}
+): Promise<unknown> {
+  const timeout = options.timeout ?? 60000;
+  const cmd = [
+    "openclaw", "gateway", "call", method,
+    "--params", JSON.stringify(params),
+    "--json",
+    "--timeout", String(timeout),
+  ];
+
+  if (options.expectFinal) {
+    cmd.push("--expect-final");
+  }
+
+  logger.info({ tenantId, method, params }, "OpenClaw gateway call");
+
+  const output = await execInContainer(tenantId, cmd);
+
+  // Parse JSON response
+  try {
+    // Find the first { or [ to start of JSON (skip any log lines)
+    const jsonStart = output.search(/[{\[]/);
+    if (jsonStart === -1) {
+      logger.warn({ tenantId, method, output }, "No JSON in OpenClaw response");
+      return { raw: output };
+    }
+    return JSON.parse(output.slice(jsonStart));
+  } catch {
+    logger.warn({ tenantId, method, output }, "Failed to parse OpenClaw response");
+    return { raw: output };
+  }
+}
