@@ -1,12 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  createTenantSchema,
-  type CreateTenantInput,
-} from "@/lib/validations/tenant";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { FilterSelect } from "@/components/shared/filter-select";
-import { Plus } from "lucide-react";
+import { toast } from "sonner";
+import { Plus, Loader2 } from "lucide-react";
 
 interface TenantFormDialogProps {
   onSuccess?: () => void;
@@ -28,45 +23,62 @@ export function TenantFormDialog({ onSuccess }: TenantFormDialogProps) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    reset,
-    formState: { errors },
-  } = useForm<CreateTenantInput>({
-    resolver: zodResolver(createTenantSchema),
-    defaultValues: {
-      name: "",
-      plan: "starter",
-      status: "active",
-    },
-  });
+  // Controlled form state
+  const [name, setName] = useState("");
+  const [plan, setPlan] = useState("starter");
+  const [status, setStatus] = useState("active");
+  const [error, setError] = useState("");
 
-  async function onSubmit(data: CreateTenantInput) {
+  function resetForm() {
+    setName("");
+    setPlan("starter");
+    setStatus("active");
+    setError("");
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!name.trim()) {
+      setError("Nama perusahaan wajib diisi");
+      return;
+    }
+
     setSubmitting(true);
+    setError("");
+
     try {
       const res = await fetch("/api/tenants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ name: name.trim(), plan, status }),
       });
 
-      if (!res.ok) throw new Error("Failed to create tenant");
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || "Gagal membuat tenant");
+        return;
+      }
 
-      reset();
+      toast.success("Tenant berhasil dibuat");
+      resetForm();
       setOpen(false);
       onSuccess?.();
     } catch {
-      // Error handling — could add toast here
+      toast.error("Gagal membuat tenant");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) resetForm();
+      }}
+    >
       <DialogTrigger className="inline-flex items-center gap-2 px-4 py-2 rounded-[var(--radius-sm)] text-[13px] font-[550] bg-gradient-to-r from-brand-indigo to-brand-violet text-white shadow-lg shadow-brand-indigo/30 hover:opacity-90 transition-opacity cursor-pointer">
         <Plus className="h-4 w-4" />
         Tambah Tenant
@@ -76,26 +88,28 @@ export function TenantFormDialog({ onSuccess }: TenantFormDialogProps) {
           <DialogTitle>Tambah Tenant Baru</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Nama Perusahaan</Label>
+            <Label htmlFor="tenant-name">Nama Perusahaan</Label>
             <Input
-              id="name"
+              id="tenant-name"
               placeholder="PT Maju Jaya"
-              {...register("name")}
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError("");
+              }}
             />
-            {errors.name && (
-              <p className="text-xs text-urgent">{errors.name.message}</p>
+            {error && (
+              <p className="text-xs text-urgent">{error}</p>
             )}
           </div>
 
           <div className="space-y-2">
             <Label>Plan</Label>
             <FilterSelect
-              value={watch("plan")}
-              onChange={(v) =>
-                setValue("plan", v as CreateTenantInput["plan"])
-              }
+              value={plan}
+              onChange={setPlan}
               placeholder="Pilih plan"
               width="w-full"
               options={[
@@ -110,10 +124,8 @@ export function TenantFormDialog({ onSuccess }: TenantFormDialogProps) {
           <div className="space-y-2">
             <Label>Status</Label>
             <FilterSelect
-              value={watch("status")}
-              onChange={(v) =>
-                setValue("status", v as CreateTenantInput["status"])
-              }
+              value={status}
+              onChange={setStatus}
               placeholder="Pilih status"
               width="w-full"
               options={[
@@ -137,7 +149,14 @@ export function TenantFormDialog({ onSuccess }: TenantFormDialogProps) {
               disabled={submitting}
               className="bg-gradient-to-r from-brand-indigo to-brand-violet text-white"
             >
-              {submitting ? "Menyimpan..." : "Simpan"}
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                "Simpan"
+              )}
             </Button>
           </div>
         </form>
