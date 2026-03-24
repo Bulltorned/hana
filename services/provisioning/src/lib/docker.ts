@@ -179,6 +179,7 @@ export async function restartContainer(tenantId: string): Promise<void> {
 
 /**
  * Execute a command inside a tenant's container and return stdout.
+ * Uses TTY mode to avoid Docker multiplexed stream header issues.
  */
 export async function execInContainer(
   tenantId: string,
@@ -191,13 +192,15 @@ export async function execInContainer(
 
   const container = docker.getContainer(containerId);
 
+  // Use Tty: true to get clean output without Docker multiplexed headers
   const exec = await container.exec({
     Cmd: cmd,
     AttachStdout: true,
     AttachStderr: true,
+    Tty: true,
   });
 
-  const stream = await exec.start({ Detach: false, Tty: false });
+  const stream = await exec.start({ Detach: false, Tty: true });
 
   return new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -207,19 +210,8 @@ export async function execInContainer(
     });
 
     stream.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf-8");
-      // Docker multiplexed stream has 8-byte header per frame
-      // Strip headers to get clean output
-      const lines = raw.split("\n").map((line) => {
-        // Remove docker stream header bytes (first 8 bytes per frame)
-        if (line.length > 8) {
-          const cleaned = line.slice(8);
-          // Only return if it looks like actual content
-          if (cleaned.trim()) return cleaned;
-        }
-        return line;
-      });
-      resolve(lines.join("\n").trim());
+      const output = Buffer.concat(chunks).toString("utf-8").trim();
+      resolve(output);
     });
 
     stream.on("error", reject);
