@@ -167,13 +167,19 @@ async function generateOpenClawConfig(
   const model = plan === "pro" ? "claude-sonnet-4-20250514" : "claude-sonnet-4-20250514";
 
   const openclawConfig = {
-    agent: {
-      name: `HR Agent ${tenantName}`,
-      identity: `Kamu adalah HR Agent untuk ${tenantName}. Kamu membantu tim HRD dengan compliance, dokumen, assessment, dan pertanyaan regulasi ketenagakerjaan Indonesia. Selalu jawab dalam Bahasa Indonesia kecuali user menulis dalam Bahasa Inggris.`,
+    agents: {
+      defaults: {
+        name: `HR Agent ${tenantName}`,
+        identity: `Kamu adalah HR Agent untuk ${tenantName}. Kamu membantu tim HRD dengan compliance, dokumen, assessment, dan pertanyaan regulasi ketenagakerjaan Indonesia. Selalu jawab dalam Bahasa Indonesia kecuali user menulis dalam Bahasa Inggris.`,
+        model,
+      },
+    },
+    tools: {
+      elevated: [],
+      exec: { enabled: true },
     },
     provider: {
       type: "anthropic",
-      model,
       apiKey: "${ANTHROPIC_API_KEY}",
     },
     skills: {
@@ -182,6 +188,7 @@ async function generateOpenClawConfig(
       },
     },
     gateway: {
+      mode: "local",
       port: 18789,
       host: "0.0.0.0",
     },
