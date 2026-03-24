@@ -32,6 +32,7 @@ export function TenantFormDialog({ onSuccess }: TenantFormDialogProps) {
     register,
     handleSubmit,
     setValue,
+    watch,
     reset,
     formState: { errors },
   } = useForm<CreateTenantInput>({
@@ -91,7 +92,7 @@ export function TenantFormDialog({ onSuccess }: TenantFormDialogProps) {
           <div className="space-y-2">
             <Label>Plan</Label>
             <FilterSelect
-              value="starter"
+              value={watch("plan")}
               onChange={(v) =>
                 setValue("plan", v as CreateTenantInput["plan"])
               }
@@ -109,7 +110,7 @@ export function TenantFormDialog({ onSuccess }: TenantFormDialogProps) {
           <div className="space-y-2">
             <Label>Status</Label>
             <FilterSelect
-              value="active"
+              value={watch("status")}
               onChange={(v) =>
                 setValue("status", v as CreateTenantInput["status"])
               }
