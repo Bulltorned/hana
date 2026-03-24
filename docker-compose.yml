@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  provisioning:
+    build: ./services/provisioning
+    ports:
+      - "3100:3100"
+    env_file: ./services/provisioning/.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./skills:/app/skills:ro
+      - ./data/tenants:/app/data/tenants
+    networks:
+      - hana-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  hana-network:
+    driver: bridge
