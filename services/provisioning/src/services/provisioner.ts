@@ -5,17 +5,19 @@ import {
   stopContainer,
   removeContainer,
   getContainerStatus,
+  getOpenClawGatewayUrl,
 } from "../lib/docker.js";
+import { createTenantWorkspace, removeTenantWorkspace } from "./workspace.js";
 import { recordHeartbeat } from "./heartbeat.js";
 import { logger } from "../lib/logger.js";
-import type { Tenant, TenantSettings } from "../types.js";
 
 /**
- * Provision an agent container for a tenant.
- * Creates Docker container, starts it, updates tenant status.
+ * Provision an OpenClaw agent container for a tenant.
+ * Creates workspace, copies skills, generates config, starts container.
  */
 export async function provisionTenant(tenantId: string): Promise<{
   containerId: string;
+  gatewayUrl: string;
   status: string;
 }> {
   // 1. Check if already provisioned
@@ -27,7 +29,7 @@ export async function provisionTenant(tenantId: string): Promise<{
   // 2. Fetch tenant data
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
-    .select("*, tenant_settings(*)")
+    .select("*")
     .eq("id", tenantId)
     .single();
 
@@ -37,7 +39,7 @@ export async function provisionTenant(tenantId: string): Promise<{
 
   logger.info(
     { tenantId, name: tenant.name, plan: tenant.plan },
-    "Provisioning tenant"
+    "Provisioning tenant with OpenClaw"
   );
 
   // 3. If there's a stopped container, remove it first
@@ -45,7 +47,10 @@ export async function provisionTenant(tenantId: string): Promise<{
     await removeContainer(existing.containerId);
   }
 
-  // 4. Create and start container
+  // 4. Create tenant workspace (dirs, skills, openclaw.json)
+  await createTenantWorkspace(tenantId, tenant.name, tenant.plan);
+
+  // 5. Create and start container
   const containerId = await createAgentContainer({
     tenantId,
     tenantName: tenant.name,
@@ -54,13 +59,21 @@ export async function provisionTenant(tenantId: string): Promise<{
 
   await startContainer(containerId);
 
-  // 5. Update tenant status to active
+  // 6. Wait for OpenClaw gateway to be healthy (max 30 seconds)
+  const gatewayUrl = getOpenClawGatewayUrl(tenantId);
+  const healthy = await waitForHealth(gatewayUrl, 30_000);
+
+  if (!healthy) {
+    logger.warn({ tenantId }, "OpenClaw gateway did not become healthy in 30s — container may still be starting");
+  }
+
+  // 7. Update tenant status to active
   await supabase
     .from("tenants")
     .update({ status: "active" })
     .eq("id", tenantId);
 
-  // 6. Insert initial heartbeat
+  // 8. Insert initial heartbeat
   await recordHeartbeat({
     tenant_id: tenantId,
     agent_type: "hr_agent",
@@ -70,30 +83,32 @@ export async function provisionTenant(tenantId: string): Promise<{
   });
 
   logger.info(
-    { tenantId, containerId },
-    "Tenant provisioned successfully"
+    { tenantId, containerId, gatewayUrl },
+    "Tenant provisioned successfully with OpenClaw"
   );
 
-  return { containerId, status: "running" };
+  return { containerId, gatewayUrl, status: "running" };
 }
 
 /**
- * Deprovision (remove) an agent container for a tenant.
+ * Deprovision (remove) an OpenClaw container and workspace for a tenant.
  */
-export async function deprovisionTenant(tenantId: string): Promise<void> {
+export async function deprovisionTenant(
+  tenantId: string,
+  removeData: boolean = false
+): Promise<void> {
   const { status, containerId } = await getContainerStatus(tenantId);
 
-  if (status === "not_found") {
-    logger.warn({ tenantId }, "No container to deprovision");
-    return;
-  }
-
-  if (status === "running" && containerId) {
-    await stopContainer(containerId);
-  }
-
-  if (containerId) {
+  if (status !== "not_found" && containerId) {
+    if (status === "running") {
+      await stopContainer(containerId);
+    }
     await removeContainer(containerId);
+  }
+
+  // Optionally remove workspace data
+  if (removeData) {
+    await removeTenantWorkspace(tenantId);
   }
 
   // Mark heartbeat offline
@@ -103,5 +118,33 @@ export async function deprovisionTenant(tenantId: string): Promise<void> {
     status: "offline",
   });
 
-  logger.info({ tenantId }, "Tenant deprovisioned");
+  logger.info({ tenantId, removeData }, "Tenant deprovisioned");
+}
+
+/**
+ * Wait for OpenClaw gateway to respond to health check.
+ */
+async function waitForHealth(
+  gatewayUrl: string,
+  timeoutMs: number
+): Promise<boolean> {
+  const start = Date.now();
+  const healthUrl = `${gatewayUrl}/health`;
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(healthUrl, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (res.ok) {
+        logger.info({ gatewayUrl }, "OpenClaw gateway is healthy");
+        return true;
+      }
+    } catch {
+      // Not ready yet
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
+  return false;
 }

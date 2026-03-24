@@ -4,10 +4,10 @@ import { logger } from "./logger.js";
 
 const docker = new Dockerode({ socketPath: config.DOCKER_SOCKET });
 
-const CONTAINER_PREFIX = "hana-agent-";
+const CONTAINER_PREFIX = "openclaw-";
 
 function containerName(tenantId: string): string {
-  return `${CONTAINER_PREFIX}${tenantId.slice(0, 8)}`;
+  return `${CONTAINER_PREFIX}${tenantId.slice(0, 12)}`;
 }
 
 export interface CreateContainerOptions {
@@ -20,8 +20,9 @@ export async function createAgentContainer(
   opts: CreateContainerOptions
 ): Promise<string> {
   const name = containerName(opts.tenantId);
+  const tenantDataDir = `/data/tenants/${opts.tenantId}`;
 
-  logger.info({ tenantId: opts.tenantId, name }, "Creating agent container");
+  logger.info({ tenantId: opts.tenantId, name }, "Creating OpenClaw container");
 
   const container = await docker.createContainer({
     name,
@@ -29,10 +30,12 @@ export async function createAgentContainer(
     Env: [
       `TENANT_ID=${opts.tenantId}`,
       `TENANT_NAME=${opts.tenantName}`,
-      `GATEWAY_URL=http://provisioning:${config.PORT}/gateway`,
+      `ANTHROPIC_API_KEY=${config.ANTHROPIC_API_KEY}`,
       `SUPABASE_URL=${config.SUPABASE_URL}`,
       `SUPABASE_SERVICE_ROLE_KEY=${config.SUPABASE_SERVICE_ROLE_KEY}`,
-      `ANTHROPIC_API_KEY=${config.ANTHROPIC_API_KEY}`,
+      `OPENCLAW_HOME=/workspace`,
+      `OPENCLAW_STATE_DIR=/workspace/.openclaw/state`,
+      `OPENCLAW_CONFIG_PATH=/workspace/.openclaw/openclaw.json`,
       `PLAN=${opts.plan}`,
     ],
     Labels: {
@@ -41,9 +44,13 @@ export async function createAgentContainer(
       "hana.tenant_name": opts.tenantName,
       "hana.plan": opts.plan,
     },
+    ExposedPorts: {
+      "18789/tcp": {},
+    },
     HostConfig: {
       Binds: [
-        `${config.SKILLS_PATH}:/app/skills:ro`,
+        `${tenantDataDir}/skills:/workspace/skills`,
+        `${tenantDataDir}/state:/workspace/.openclaw`,
       ],
       NetworkMode: config.AGENT_NETWORK,
       Memory: 512 * 1024 * 1024, // 512MB
@@ -98,6 +105,39 @@ export async function getContainerStatus(
   } catch {
     return { status: "not_found" };
   }
+}
+
+/**
+ * Get the internal Docker network IP of a tenant's container.
+ * Used to send messages to the OpenClaw gateway.
+ */
+export async function getContainerIp(tenantId: string): Promise<string | null> {
+  try {
+    const containers = await docker.listContainers({
+      filters: {
+        label: [`hana.tenant_id=${tenantId}`],
+      },
+    });
+
+    if (containers.length === 0) return null;
+
+    const container = docker.getContainer(containers[0].Id);
+    const info = await container.inspect();
+    const networks = info.NetworkSettings.Networks;
+    const network = networks[config.AGENT_NETWORK];
+
+    return network?.IPAddress ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the OpenClaw gateway URL for a tenant's container.
+ */
+export function getOpenClawGatewayUrl(tenantId: string): string {
+  // Container name is resolvable on the Docker network
+  return `http://${containerName(tenantId)}:18789`;
 }
 
 export interface AgentContainerInfo {

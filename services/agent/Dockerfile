@@ -1,21 +1,19 @@
-FROM node:20-slim AS build
+FROM node:22-alpine
 
-WORKDIR /app
+# Install OpenClaw globally
+RUN npm install -g openclaw
 
-COPY package.json ./
-RUN npm install
+# Working directory = workspace per tenant
+WORKDIR /workspace
 
-COPY . .
-RUN npx tsc
+# Skills are mounted as volume during provisioning
+# Config (openclaw.json) is generated during provisioning
 
-FROM node:20-slim
-WORKDIR /app
+ENV OPENCLAW_HOME=/workspace
+ENV OPENCLAW_STATE_DIR=/workspace/.openclaw/state
+ENV OPENCLAW_CONFIG_PATH=/workspace/.openclaw/openclaw.json
 
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
-COPY package.json ./
+# Gateway port (internal only — not exposed to public)
+EXPOSE 18789
 
-# Skills are mounted as volume at /app/skills
-VOLUME ["/app/skills"]
-
-CMD ["node", "dist/index.js"]
+CMD ["openclaw", "gateway", "--port", "18789"]
