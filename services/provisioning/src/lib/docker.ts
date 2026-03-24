@@ -190,19 +190,17 @@ export async function execInContainer(
     throw new Error(`Container for tenant ${tenantId} is not running`);
   }
 
-  const { execSync } = await import("child_process");
-
-  const dockerCmd = `docker exec ${containerId} ${cmd.map((c) => `'${c.replace(/'/g, "'\\''")}'`).join(" ")}`;
+  const { execFileSync } = await import("child_process");
 
   try {
-    const output = execSync(dockerCmd, {
+    const output = execFileSync("docker", ["exec", containerId, ...cmd], {
       encoding: "utf-8",
       timeout: 90_000,
       maxBuffer: 10 * 1024 * 1024, // 10MB
     });
     return output.trim();
   } catch (err: any) {
-    // execSync throws on non-zero exit, but stdout may still have output
+    // execFileSync throws on non-zero exit, but stdout may still have output
     if (err.stdout) {
       return (err.stdout as string).trim();
     }
