@@ -36,7 +36,9 @@ export function Sidebar() {
       <ScrollArea className="flex-1 -mx-1 px-1">
         <nav className="flex flex-col gap-1">
           {sections.map((section) => {
-            const items = navigationItems.filter((i) => i.section === section);
+            const items = navigationItems.filter(
+              (i) => i.section === section && (!i.operatorOnly || isOperator)
+            );
             if (items.length === 0) return null;
             return (
               <div key={section}>

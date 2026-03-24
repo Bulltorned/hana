@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Users,
+  Building2,
   ShieldCheck,
   BarChart3,
   FileText,
@@ -17,11 +18,13 @@ export interface NavItem {
   icon: LucideIcon;
   badge?: string;
   section: "main" | "agent" | "account";
+  operatorOnly?: boolean;
 }
 
 export const navigationItems: NavItem[] = [
   // Main
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, section: "main" },
+  { label: "Tenants", href: "/tenants", icon: Building2, section: "main", operatorOnly: true },
   { label: "Karyawan", href: "/employees", icon: Users, section: "main" },
   { label: "Compliance", href: "/compliance", icon: ShieldCheck, section: "main" },
   { label: "Assessment", href: "/assessment", icon: BarChart3, section: "main" },
