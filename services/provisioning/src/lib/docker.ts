@@ -1,5 +1,4 @@
 import Dockerode from "dockerode";
-import { PassThrough } from "stream";
 import { config } from "../config.js";
 import { logger } from "./logger.js";
 
@@ -180,7 +179,7 @@ export async function restartContainer(tenantId: string): Promise<void> {
 
 /**
  * Execute a command inside a tenant's container and return stdout.
- * Uses dockerode's demuxStream to properly separate stdout from stderr.
+ * Uses child_process.execSync to call docker exec for reliable output.
  */
 export async function execInContainer(
   tenantId: string,
@@ -191,39 +190,24 @@ export async function execInContainer(
     throw new Error(`Container for tenant ${tenantId} is not running`);
   }
 
-  const container = docker.getContainer(containerId);
+  const { execSync } = await import("child_process");
 
-  const exec = await container.exec({
-    Cmd: cmd,
-    AttachStdout: true,
-    AttachStderr: true,
-    Tty: false,
-  });
+  const dockerCmd = `docker exec ${containerId} ${cmd.map((c) => `'${c.replace(/'/g, "'\\''")}'`).join(" ")}`;
 
-  const stream = await exec.start({ Detach: false, Tty: false });
-
-  return new Promise<string>((resolve, reject) => {
-    const stdoutChunks: Buffer[] = [];
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-
-    // Use dockerode's demuxStream to properly split stdout/stderr
-    docker.modem.demuxStream(stream, stdout, stderr);
-
-    stdout.on("data", (chunk: Buffer) => {
-      stdoutChunks.push(chunk);
+  try {
+    const output = execSync(dockerCmd, {
+      encoding: "utf-8",
+      timeout: 90_000,
+      maxBuffer: 10 * 1024 * 1024, // 10MB
     });
-
-    stream.on("end", () => {
-      const output = Buffer.concat(stdoutChunks).toString("utf-8").trim();
-      resolve(output);
-    });
-
-    stream.on("error", reject);
-
-    // Timeout after 90 seconds
-    setTimeout(() => reject(new Error("Container exec timeout")), 90_000);
-  });
+    return output.trim();
+  } catch (err: any) {
+    // execSync throws on non-zero exit, but stdout may still have output
+    if (err.stdout) {
+      return (err.stdout as string).trim();
+    }
+    throw err;
+  }
 }
 
 /**
