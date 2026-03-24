@@ -18,15 +18,15 @@ export async function createTenantWorkspace(
   const tenantDir = join(TENANTS_DATA_DIR, tenantId);
   const skillsDir = join(tenantDir, "skills");
   const stateDir = join(tenantDir, "state");
-  const openclawDir = join(tenantDir, "state", ".openclaw");
+  // stateDir maps to /workspace/.openclaw/ inside container
+  // So openclaw.json goes directly in stateDir (not nested .openclaw)
 
   logger.info({ tenantId, tenantDir }, "Creating tenant workspace");
 
   // 1. Create directories
   await mkdir(skillsDir, { recursive: true });
   await mkdir(stateDir, { recursive: true });
-  await mkdir(openclawDir, { recursive: true });
-  await mkdir(join(openclawDir, "memory"), { recursive: true });
+  await mkdir(join(stateDir, "memory"), { recursive: true });
 
   // 2. Copy skills from template
   await copySkills(plan, skillsDir);
@@ -34,8 +34,8 @@ export async function createTenantWorkspace(
   // 3. Generate tenant-context skill with real data
   await generateTenantContext(tenantId, tenantName, skillsDir);
 
-  // 4. Generate openclaw.json config
-  await generateOpenClawConfig(tenantId, tenantName, plan, openclawDir);
+  // 4. Generate openclaw.json config (directly in stateDir)
+  await generateOpenClawConfig(tenantId, tenantName, plan, stateDir);
 
   logger.info({ tenantId }, "Tenant workspace created");
   return tenantDir;
