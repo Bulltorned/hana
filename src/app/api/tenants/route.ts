@@ -39,5 +39,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Fire provisioning webhook (non-blocking)
+  const provisioningUrl = process.env.PROVISIONING_URL;
+  const adminApiKey = process.env.PROVISIONING_API_KEY;
+  if (provisioningUrl && adminApiKey) {
+    fetch(`${provisioningUrl}/webhook/tenant-created`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": adminApiKey,
+      },
+      body: JSON.stringify({
+        tenant_id: data.id,
+        tenant_name: data.name,
+        plan: data.plan,
+      }),
+    }).catch(() => {
+      // Non-blocking — don't fail tenant creation if webhook fails
+    });
+  }
+
   return NextResponse.json(data, { status: 201 });
 }
