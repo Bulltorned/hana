@@ -9,6 +9,7 @@ const envSchema = z.object({
   AGENT_IMAGE: z.string().default("hana-agent:latest"),
   AGENT_NETWORK: z.string().default("hana-network"),
   SKILLS_PATH: z.string().default("/app/skills"),
+  ANTHROPIC_API_KEY: z.string().min(1),
   CRON_COMPLIANCE: z.string().default("0 1 1 * *"),
 });
 

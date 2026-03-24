@@ -32,6 +32,7 @@ export async function createAgentContainer(
       `GATEWAY_URL=http://provisioning:${config.PORT}/gateway`,
       `SUPABASE_URL=${config.SUPABASE_URL}`,
       `SUPABASE_SERVICE_ROLE_KEY=${config.SUPABASE_SERVICE_ROLE_KEY}`,
+      `ANTHROPIC_API_KEY=${config.ANTHROPIC_API_KEY}`,
       `PLAN=${opts.plan}`,
     ],
     Labels: {
