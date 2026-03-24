@@ -4,13 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterSelect } from "@/components/shared/filter-select";
 import { TenantSelector } from "@/components/shared/tenant-selector";
 import { ComplianceStatusChip } from "@/components/compliance/compliance-status-chip";
 import { ComplianceTypeIcon, getComplianceTypeLabel } from "@/components/compliance/compliance-type-icon";
@@ -181,18 +175,19 @@ export default function CompliancePage() {
           />
         )}
 
-        <Select value={filterStatus} onValueChange={(v) => v && setFilterStatus(v)}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Filter Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Status</SelectItem>
-            <SelectItem value="overdue">Terlambat</SelectItem>
-            <SelectItem value="due_soon">Segera</SelectItem>
-            <SelectItem value="upcoming">Mendatang</SelectItem>
-            <SelectItem value="completed">Selesai</SelectItem>
-          </SelectContent>
-        </Select>
+        <FilterSelect
+          value={filterStatus}
+          onChange={setFilterStatus}
+          placeholder="Filter Status"
+          width="w-[160px]"
+          options={[
+            { value: "all", label: "Semua Status" },
+            { value: "overdue", label: "Terlambat" },
+            { value: "due_soon", label: "Segera" },
+            { value: "upcoming", label: "Mendatang" },
+            { value: "completed", label: "Selesai" },
+          ]}
+        />
 
         <div className="flex-1" />
 

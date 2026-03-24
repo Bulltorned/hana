@@ -7,13 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterSelect } from "@/components/shared/filter-select";
 import type { Tenant, TenantSettings } from "@/lib/types";
 import { toast } from "sonner";
 import {
@@ -244,30 +238,32 @@ export default function TenantDetailPage() {
             </div>
             <div className="space-y-2">
               <Label>Paket</Label>
-              <Select value={plan} onValueChange={(v) => v && setPlan(v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="trial">Trial</SelectItem>
-                  <SelectItem value="starter">Starter</SelectItem>
-                  <SelectItem value="growth">Growth</SelectItem>
-                  <SelectItem value="pro">Pro</SelectItem>
-                </SelectContent>
-              </Select>
+              <FilterSelect
+                value={plan}
+                onChange={setPlan}
+                placeholder="Pilih paket"
+                width="w-full"
+                options={[
+                  { value: "trial", label: "Trial" },
+                  { value: "starter", label: "Starter" },
+                  { value: "growth", label: "Growth" },
+                  { value: "pro", label: "Pro" },
+                ]}
+              />
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select value={status} onValueChange={(v) => v && setStatus(v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="provisioning">Provisioning</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="suspended">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
+              <FilterSelect
+                value={status}
+                onChange={setStatus}
+                placeholder="Pilih status"
+                width="w-full"
+                options={[
+                  { value: "provisioning", label: "Provisioning" },
+                  { value: "active", label: "Active" },
+                  { value: "suspended", label: "Suspended" },
+                ]}
+              />
             </div>
           </div>
         </div>

@@ -6,13 +6,7 @@ import { employeeSchema, type EmployeeInput } from "@/lib/validations/employee";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterSelect } from "@/components/shared/filter-select";
 import { Separator } from "@/components/ui/separator";
 import type { Employee } from "@/lib/types";
 
@@ -167,21 +161,19 @@ export function EmployeeForm({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Status Kontrak *</Label>
-            <Select
-              defaultValue={statusKontrak}
-              onValueChange={(v) =>
+            <FilterSelect
+              value={statusKontrak}
+              onChange={(v) =>
                 setValue("status_kontrak", v as EmployeeInput["status_kontrak"])
               }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="PKWTT">PKWTT (Tetap)</SelectItem>
-                <SelectItem value="PKWT">PKWT (Kontrak)</SelectItem>
-                <SelectItem value="Probation">Probation</SelectItem>
-              </SelectContent>
-            </Select>
+              placeholder="Pilih status kontrak"
+              width="w-full"
+              options={[
+                { value: "PKWTT", label: "PKWTT (Tetap)" },
+                { value: "PKWT", label: "PKWT (Kontrak)" },
+                { value: "Probation", label: "Probation" },
+              ]}
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

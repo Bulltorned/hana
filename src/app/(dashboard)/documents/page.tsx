@@ -4,13 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { format, parseISO } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterSelect } from "@/components/shared/filter-select";
 import { TenantSelector } from "@/components/shared/tenant-selector";
 import { NewDocumentDialog } from "@/components/documents/new-document-dialog";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
@@ -95,19 +89,19 @@ export default function DocumentsPage() {
           />
         )}
 
-        <Select value={filterType} onValueChange={(v) => v && setFilterType(v)}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Jenis Dokumen" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Jenis</SelectItem>
-            {Object.entries(docTypeLabels).map(([key, label]) => (
-              <SelectItem key={key} value={key}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <FilterSelect
+          value={filterType}
+          onChange={setFilterType}
+          placeholder="Jenis Dokumen"
+          width="w-[160px]"
+          options={[
+            { value: "all", label: "Semua Jenis" },
+            ...Object.entries(docTypeLabels).map(([key, label]) => ({
+              value: key,
+              label,
+            })),
+          ]}
+        />
 
         <div className="flex-1" />
 

@@ -12,13 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterSelect } from "@/components/shared/filter-select";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -154,31 +148,29 @@ export default function EmployeesPage() {
           />
         </div>
 
-        <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v ?? "all")}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Status</SelectItem>
-            <SelectItem value="PKWTT">PKWTT</SelectItem>
-            <SelectItem value="PKWT">PKWT</SelectItem>
-            <SelectItem value="Probation">Probation</SelectItem>
-          </SelectContent>
-        </Select>
+        <FilterSelect
+          value={filterStatus}
+          onChange={setFilterStatus}
+          placeholder="Status"
+          width="w-[140px]"
+          options={[
+            { value: "all", label: "Semua Status" },
+            { value: "PKWTT", label: "PKWTT" },
+            { value: "PKWT", label: "PKWT" },
+            { value: "Probation", label: "Probation" },
+          ]}
+        />
 
-        <Select value={filterDivisi} onValueChange={(v) => setFilterDivisi(v ?? "all")}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Divisi" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Divisi</SelectItem>
-            {divisions.map((d) => (
-              <SelectItem key={d} value={d}>
-                {d}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <FilterSelect
+          value={filterDivisi}
+          onChange={setFilterDivisi}
+          placeholder="Divisi"
+          width="w-[140px]"
+          options={[
+            { value: "all", label: "Semua Divisi" },
+            ...divisions.map((d) => ({ value: d, label: d })),
+          ]}
+        />
 
         {selectedTenantId && (
           <CSVImportDialog

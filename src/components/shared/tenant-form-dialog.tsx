@@ -17,13 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterSelect } from "@/components/shared/filter-select";
 import { Plus } from "lucide-react";
 
 interface TenantFormDialogProps {
@@ -96,41 +90,37 @@ export function TenantFormDialog({ onSuccess }: TenantFormDialogProps) {
 
           <div className="space-y-2">
             <Label>Plan</Label>
-            <Select
-              defaultValue="starter"
-              onValueChange={(v) =>
+            <FilterSelect
+              value="starter"
+              onChange={(v) =>
                 setValue("plan", v as CreateTenantInput["plan"])
               }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="trial">Trial</SelectItem>
-                <SelectItem value="starter">Starter — Rp 2.5jt/bln</SelectItem>
-                <SelectItem value="growth">Growth — Rp 6jt/bln</SelectItem>
-                <SelectItem value="pro">Pro — Rp 15jt/bln</SelectItem>
-              </SelectContent>
-            </Select>
+              placeholder="Pilih plan"
+              width="w-full"
+              options={[
+                { value: "trial", label: "Trial" },
+                { value: "starter", label: "Starter — Rp 2.5jt/bln" },
+                { value: "growth", label: "Growth — Rp 6jt/bln" },
+                { value: "pro", label: "Pro — Rp 15jt/bln" },
+              ]}
+            />
           </div>
 
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select
-              defaultValue="active"
-              onValueChange={(v) =>
+            <FilterSelect
+              value="active"
+              onChange={(v) =>
                 setValue("status", v as CreateTenantInput["status"])
               }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="provisioning">Provisioning</SelectItem>
-                <SelectItem value="suspended">Suspended</SelectItem>
-              </SelectContent>
-            </Select>
+              placeholder="Pilih status"
+              width="w-full"
+              options={[
+                { value: "active", label: "Active" },
+                { value: "provisioning", label: "Provisioning" },
+                { value: "suspended", label: "Suspended" },
+              ]}
+            />
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

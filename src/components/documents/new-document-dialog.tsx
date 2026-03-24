@@ -12,13 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FilterSelect } from "@/components/shared/filter-select";
 import type { Employee, DocType } from "@/lib/types";
 import { toast } from "sonner";
 import { Plus, Loader2 } from "lucide-react";
@@ -113,11 +107,9 @@ export function NewDocumentDialog({ tenantId, onSuccess }: NewDocumentDialogProp
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
-      <DialogTrigger asChild>
-        <Button className="bg-gradient-to-r from-brand-indigo to-brand-violet text-white shadow-lg shadow-brand-indigo/30">
-          <Plus className="h-4 w-4 mr-1.5" />
-          Buat Dokumen
-        </Button>
+      <DialogTrigger className="inline-flex items-center gap-2 px-4 py-2 rounded-[var(--radius-sm)] text-[13px] font-[550] bg-gradient-to-r from-brand-indigo to-brand-violet text-white shadow-lg shadow-brand-indigo/30 hover:opacity-90 transition-opacity cursor-pointer">
+        <Plus className="h-4 w-4" />
+        Buat Dokumen
       </DialogTrigger>
       <DialogContent className="glass sm:max-w-lg">
         <DialogHeader>
@@ -127,35 +119,33 @@ export function NewDocumentDialog({ tenantId, onSuccess }: NewDocumentDialogProp
         <div className="space-y-4 mt-2">
           <div className="space-y-2">
             <Label>Jenis Dokumen</Label>
-            <Select value={docType} onValueChange={(v) => v && setDocType(v as DocType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(docTypeLabels).map(([key, label]) => (
-                  <SelectItem key={key} value={key}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <FilterSelect
+              value={docType}
+              onChange={(v) => setDocType(v as DocType)}
+              placeholder="Pilih jenis dokumen"
+              width="w-full"
+              options={Object.entries(docTypeLabels).map(([key, label]) => ({
+                value: key,
+                label,
+              }))}
+            />
           </div>
 
           <div className="space-y-2">
             <Label>Karyawan (opsional)</Label>
-            <Select value={employeeId} onValueChange={(v) => v && setEmployeeId(v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih karyawan..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Tidak terkait karyawan —</SelectItem>
-                {employees.map((emp) => (
-                  <SelectItem key={emp.id} value={emp.id}>
-                    {emp.name} — {emp.jabatan}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <FilterSelect
+              value={employeeId || "none"}
+              onChange={(v) => setEmployeeId(v === "none" ? "" : v)}
+              placeholder="Pilih karyawan..."
+              width="w-full"
+              options={[
+                { value: "none", label: "— Tidak terkait karyawan —" },
+                ...employees.map((emp) => ({
+                  value: emp.id,
+                  label: `${emp.name} — ${emp.jabatan}`,
+                })),
+              ]}
+            />
           </div>
 
           <div className="space-y-2">
