@@ -1,14 +1,14 @@
 "use client";
 
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { employeeSchema, type EmployeeInput } from "@/lib/validations/employee";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { FilterSelect } from "@/components/shared/filter-select";
 import { Separator } from "@/components/ui/separator";
-import type { Employee } from "@/lib/types";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
+import type { Employee, ContractStatus } from "@/lib/types";
 
 interface EmployeeFormProps {
   employee?: Employee | null;
@@ -25,99 +25,141 @@ export function EmployeeForm({
 }: EmployeeFormProps) {
   const isEditing = !!employee;
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { errors, isSubmitting },
-  } = useForm<EmployeeInput>({
-    resolver: zodResolver(employeeSchema),
-    defaultValues: employee
-      ? {
-          name: employee.name,
-          employee_id: employee.employee_id,
-          jabatan: employee.jabatan,
-          divisi: employee.divisi,
-          status_kontrak: employee.status_kontrak,
-          tgl_mulai: employee.tgl_mulai,
-          tgl_berakhir: employee.tgl_berakhir,
-          no_bpjs_kes: employee.no_bpjs_kes,
-          no_bpjs_tk: employee.no_bpjs_tk,
-          npwp: employee.npwp,
-          gaji_pokok: employee.gaji_pokok,
-          email: employee.email,
-          phone: employee.phone,
-        }
-      : {
-          name: "",
-          jabatan: "",
-          divisi: "",
-          status_kontrak: "PKWT",
-          tgl_mulai: new Date().toISOString().split("T")[0],
-          no_bpjs_kes: "",
-          no_bpjs_tk: "",
-          npwp: "",
-          gaji_pokok: 0,
-        },
-  });
+  // Controlled form state
+  const [name, setName] = useState(employee?.name ?? "");
+  const [employeeId, setEmployeeId] = useState(employee?.employee_id ?? "");
+  const [email, setEmail] = useState(employee?.email ?? "");
+  const [phone, setPhone] = useState(employee?.phone ?? "");
+  const [jabatan, setJabatan] = useState(employee?.jabatan ?? "");
+  const [divisi, setDivisi] = useState(employee?.divisi ?? "");
+  const [gajiPokok, setGajiPokok] = useState(String(employee?.gaji_pokok ?? 0));
+  const [statusKontrak, setStatusKontrak] = useState<ContractStatus>(
+    employee?.status_kontrak ?? "PKWT"
+  );
+  const [tglMulai, setTglMulai] = useState(
+    employee?.tgl_mulai ?? new Date().toISOString().split("T")[0]
+  );
+  const [tglBerakhir, setTglBerakhir] = useState(employee?.tgl_berakhir ?? "");
+  const [noBpjsKes, setNoBpjsKes] = useState(employee?.no_bpjs_kes ?? "");
+  const [noBpjsTk, setNoBpjsTk] = useState(employee?.no_bpjs_tk ?? "");
+  const [npwp, setNpwp] = useState(employee?.npwp ?? "");
 
-  const statusKontrak = watch("status_kontrak");
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  async function onSubmit(data: EmployeeInput) {
-    const url = isEditing
-      ? `/api/employees/${employee!.id}`
-      : "/api/employees";
-    const method = isEditing ? "PATCH" : "POST";
+  function validate(): boolean {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) errs.name = "Nama wajib diisi";
+    if (!jabatan.trim()) errs.jabatan = "Jabatan wajib diisi";
+    if (!divisi.trim()) errs.divisi = "Divisi wajib diisi";
+    if (!tglMulai) errs.tgl_mulai = "Tanggal mulai wajib diisi";
+    if (statusKontrak !== "PKWTT" && !tglBerakhir) {
+      errs.tgl_berakhir = "Tanggal berakhir wajib untuk PKWT/Probation";
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errs.email = "Email tidak valid";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, tenant_id: tenantId }),
-    });
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!validate()) return;
 
-    if (res.ok) {
-      onSuccess?.();
+    setSubmitting(true);
+
+    const data = {
+      tenant_id: tenantId,
+      name: name.trim(),
+      employee_id: employeeId || null,
+      jabatan: jabatan.trim(),
+      divisi: divisi.trim(),
+      status_kontrak: statusKontrak,
+      tgl_mulai: tglMulai,
+      tgl_berakhir: statusKontrak === "PKWTT" ? null : tglBerakhir || null,
+      no_bpjs_kes: noBpjsKes,
+      no_bpjs_tk: noBpjsTk,
+      npwp,
+      gaji_pokok: Number(gajiPokok) || 0,
+      email: email || null,
+      phone: phone || null,
+    };
+
+    try {
+      const url = isEditing ? `/api/employees/${employee!.id}` : "/api/employees";
+      const method = isEditing ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      if (res.ok) {
+        toast.success(
+          isEditing ? "Data karyawan berhasil diperbarui" : "Karyawan berhasil ditambahkan"
+        );
+        onSuccess?.();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Gagal menyimpan data karyawan");
+      }
+    } catch {
+      toast.error("Gagal menyimpan data karyawan");
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6">
       {/* Data Pribadi */}
       <div>
         <h3 className="text-sm font-semibold mb-3">Data Pribadi</h3>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="name">Nama Lengkap *</Label>
-            <Input id="name" {...register("name")} />
+            <Label htmlFor="emp-name">Nama Lengkap *</Label>
+            <Input
+              id="emp-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
             {errors.name && (
-              <p className="text-xs text-urgent">{errors.name.message}</p>
+              <p className="text-xs text-urgent">{errors.name}</p>
             )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="employee_id">ID Karyawan</Label>
+              <Label htmlFor="emp-id">ID Karyawan</Label>
               <Input
-                id="employee_id"
+                id="emp-id"
                 placeholder="EMP001"
-                {...register("employee_id")}
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="emp-email">Email</Label>
               <Input
-                id="email"
+                id="emp-email"
                 type="email"
-                {...register("email")}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
               {errors.email && (
-                <p className="text-xs text-urgent">{errors.email.message}</p>
+                <p className="text-xs text-urgent">{errors.email}</p>
               )}
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="phone">No. Telepon</Label>
-            <Input id="phone" placeholder="081234567890" {...register("phone")} />
+            <Label htmlFor="emp-phone">No. Telepon</Label>
+            <Input
+              id="emp-phone"
+              placeholder="081234567890"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </div>
         </div>
       </div>
@@ -129,26 +171,35 @@ export function EmployeeForm({
         <h3 className="text-sm font-semibold mb-3">Jabatan</h3>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="jabatan">Jabatan *</Label>
-            <Input id="jabatan" {...register("jabatan")} />
+            <Label htmlFor="emp-jabatan">Jabatan *</Label>
+            <Input
+              id="emp-jabatan"
+              value={jabatan}
+              onChange={(e) => setJabatan(e.target.value)}
+            />
             {errors.jabatan && (
-              <p className="text-xs text-urgent">{errors.jabatan.message}</p>
+              <p className="text-xs text-urgent">{errors.jabatan}</p>
             )}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="divisi">Divisi *</Label>
-            <Input id="divisi" {...register("divisi")} />
+            <Label htmlFor="emp-divisi">Divisi *</Label>
+            <Input
+              id="emp-divisi"
+              value={divisi}
+              onChange={(e) => setDivisi(e.target.value)}
+            />
             {errors.divisi && (
-              <p className="text-xs text-urgent">{errors.divisi.message}</p>
+              <p className="text-xs text-urgent">{errors.divisi}</p>
             )}
           </div>
         </div>
         <div className="space-y-1.5 mt-3">
-          <Label htmlFor="gaji_pokok">Gaji Pokok (Rp)</Label>
+          <Label htmlFor="emp-gaji">Gaji Pokok (Rp)</Label>
           <Input
-            id="gaji_pokok"
+            id="emp-gaji"
             type="number"
-            {...register("gaji_pokok")}
+            value={gajiPokok}
+            onChange={(e) => setGajiPokok(e.target.value)}
           />
         </div>
       </div>
@@ -163,9 +214,7 @@ export function EmployeeForm({
             <Label>Status Kontrak *</Label>
             <FilterSelect
               value={statusKontrak}
-              onChange={(v) =>
-                setValue("status_kontrak", v as EmployeeInput["status_kontrak"])
-              }
+              onChange={(v) => setStatusKontrak(v as ContractStatus)}
               placeholder="Pilih status kontrak"
               width="w-full"
               options={[
@@ -177,26 +226,28 @@ export function EmployeeForm({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="tgl_mulai">Tanggal Mulai *</Label>
-              <Input id="tgl_mulai" type="date" {...register("tgl_mulai")} />
+              <Label htmlFor="emp-tgl-mulai">Tanggal Mulai *</Label>
+              <Input
+                id="emp-tgl-mulai"
+                type="date"
+                value={tglMulai}
+                onChange={(e) => setTglMulai(e.target.value)}
+              />
               {errors.tgl_mulai && (
-                <p className="text-xs text-urgent">
-                  {errors.tgl_mulai.message}
-                </p>
+                <p className="text-xs text-urgent">{errors.tgl_mulai}</p>
               )}
             </div>
             {statusKontrak !== "PKWTT" && (
               <div className="space-y-1.5">
-                <Label htmlFor="tgl_berakhir">Tanggal Berakhir *</Label>
+                <Label htmlFor="emp-tgl-berakhir">Tanggal Berakhir *</Label>
                 <Input
-                  id="tgl_berakhir"
+                  id="emp-tgl-berakhir"
                   type="date"
-                  {...register("tgl_berakhir")}
+                  value={tglBerakhir}
+                  onChange={(e) => setTglBerakhir(e.target.value)}
                 />
                 {errors.tgl_berakhir && (
-                  <p className="text-xs text-urgent">
-                    {errors.tgl_berakhir.message}
-                  </p>
+                  <p className="text-xs text-urgent">{errors.tgl_berakhir}</p>
                 )}
               </div>
             )}
@@ -212,17 +263,29 @@ export function EmployeeForm({
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="no_bpjs_kes">No. BPJS Kesehatan</Label>
-              <Input id="no_bpjs_kes" {...register("no_bpjs_kes")} />
+              <Label htmlFor="emp-bpjs-kes">No. BPJS Kesehatan</Label>
+              <Input
+                id="emp-bpjs-kes"
+                value={noBpjsKes}
+                onChange={(e) => setNoBpjsKes(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="no_bpjs_tk">No. BPJS Ketenagakerjaan</Label>
-              <Input id="no_bpjs_tk" {...register("no_bpjs_tk")} />
+              <Label htmlFor="emp-bpjs-tk">No. BPJS Ketenagakerjaan</Label>
+              <Input
+                id="emp-bpjs-tk"
+                value={noBpjsTk}
+                onChange={(e) => setNoBpjsTk(e.target.value)}
+              />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="npwp">NPWP</Label>
-            <Input id="npwp" {...register("npwp")} />
+            <Label htmlFor="emp-npwp">NPWP</Label>
+            <Input
+              id="emp-npwp"
+              value={npwp}
+              onChange={(e) => setNpwp(e.target.value)}
+            />
           </div>
         </div>
       </div>
@@ -234,14 +297,19 @@ export function EmployeeForm({
         </Button>
         <Button
           type="submit"
-          disabled={isSubmitting}
+          disabled={submitting}
           className="bg-gradient-to-r from-brand-indigo to-brand-violet text-white"
         >
-          {isSubmitting
-            ? "Menyimpan..."
-            : isEditing
-              ? "Simpan Perubahan"
-              : "Tambah Karyawan"}
+          {submitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              Menyimpan...
+            </>
+          ) : isEditing ? (
+            "Simpan Perubahan"
+          ) : (
+            "Tambah Karyawan"
+          )}
         </Button>
       </div>
     </form>
