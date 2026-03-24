@@ -169,32 +169,13 @@ async function generateOpenClawConfig(
   const openclawConfig = {
     agents: {
       defaults: {
-        name: `HR Agent ${tenantName}`,
-        identity: `Kamu adalah HR Agent untuk ${tenantName}. Kamu membantu tim HRD dengan compliance, dokumen, assessment, dan pertanyaan regulasi ketenagakerjaan Indonesia. Selalu jawab dalam Bahasa Indonesia kecuali user menulis dalam Bahasa Inggris.`,
-        model,
-      },
-    },
-    tools: {
-      elevated: [],
-      exec: { enabled: true },
-    },
-    provider: {
-      type: "anthropic",
-      apiKey: "${ANTHROPIC_API_KEY}",
-    },
-    skills: {
-      load: {
-        dirs: ["/workspace/skills"],
+        model: `anthropic/${model}`,
+        workspace: "/workspace",
       },
     },
     gateway: {
       mode: "local",
       port: 18789,
-      host: "0.0.0.0",
-    },
-    memory: {
-      enabled: true,
-      dir: "/workspace/.openclaw/memory",
     },
   };
 
