@@ -1,4 +1,5 @@
 import Dockerode from "dockerode";
+import { PassThrough } from "stream";
 import { config } from "../config.js";
 import { logger } from "./logger.js";
 
@@ -179,7 +180,7 @@ export async function restartContainer(tenantId: string): Promise<void> {
 
 /**
  * Execute a command inside a tenant's container and return stdout.
- * Uses TTY mode to avoid Docker multiplexed stream header issues.
+ * Uses dockerode's demuxStream to properly separate stdout from stderr.
  */
 export async function execInContainer(
   tenantId: string,
@@ -192,25 +193,29 @@ export async function execInContainer(
 
   const container = docker.getContainer(containerId);
 
-  // Use Tty: true to get clean output without Docker multiplexed headers
   const exec = await container.exec({
     Cmd: cmd,
     AttachStdout: true,
     AttachStderr: true,
-    Tty: true,
+    Tty: false,
   });
 
-  const stream = await exec.start({ Detach: false, Tty: true });
+  const stream = await exec.start({ Detach: false, Tty: false });
 
   return new Promise<string>((resolve, reject) => {
-    const chunks: Buffer[] = [];
+    const stdoutChunks: Buffer[] = [];
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
 
-    stream.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
+    // Use dockerode's demuxStream to properly split stdout/stderr
+    docker.modem.demuxStream(stream, stdout, stderr);
+
+    stdout.on("data", (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
     });
 
     stream.on("end", () => {
-      const output = Buffer.concat(chunks).toString("utf-8").trim();
+      const output = Buffer.concat(stdoutChunks).toString("utf-8").trim();
       resolve(output);
     });
 
