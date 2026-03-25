@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { TenantSelector } from "@/components/shared/tenant-selector";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { ChatMessage } from "@/lib/types";
-import { Bot, Send, Loader2, Sparkles, User } from "lucide-react";
+import { Bot, Send, Loader2, Sparkles, User, Zap } from "lucide-react";
 
 function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -25,6 +25,7 @@ export default function HRAgentPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
   const [sessionId] = useState(() => generateSessionId());
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -46,11 +47,10 @@ export default function HRAgentPage() {
   }, [fetchMessages, tenantLoading, selectedTenantId]);
 
   useEffect(() => {
-    // Auto-scroll to bottom
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, streamingText]);
 
   async function handleSend() {
     if (!input.trim() || !selectedTenantId || sending) return;
@@ -58,6 +58,7 @@ export default function HRAgentPage() {
     const content = input.trim();
     setInput("");
     setSending(true);
+    setStreamingText("");
 
     // Optimistic: add user message immediately
     const optimisticMsg: ChatMessage = {
@@ -82,17 +83,72 @@ export default function HRAgentPage() {
         }),
       });
 
-      if (res.ok) {
-        const { userMessage, assistantMessage } = await res.json();
-        // Replace optimistic message with real ones
+      const chatRoute = res.headers.get("X-Chat-Route");
+
+      if (chatRoute === "direct") {
+        // Streaming response — read SSE events
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n");
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  if (data.type === "text") {
+                    fullText += data.text;
+                    setStreamingText(fullText);
+                  } else if (data.type === "done") {
+                    fullText = data.fullText;
+                  }
+                } catch {
+                  // Skip unparseable lines
+                }
+              }
+            }
+          }
+        }
+
+        // Replace streaming with final message
+        const userMsgId = res.headers.get("X-User-Message-Id") ?? optimisticMsg.id;
+        const finalAssistantMsg: ChatMessage = {
+          id: `assistant-${Date.now()}`,
+          tenant_id: selectedTenantId,
+          session_id: sessionId,
+          role: "assistant",
+          content: fullText,
+          metadata: { route: "direct" },
+          created_at: new Date().toISOString(),
+        };
+
         setMessages((prev) => [
           ...prev.filter((m) => m.id !== optimisticMsg.id),
-          userMessage,
-          assistantMessage,
+          { ...optimisticMsg, id: userMsgId },
+          finalAssistantMsg,
         ]);
+        setStreamingText("");
+      } else {
+        // JSON response (OpenClaw path)
+        if (res.ok) {
+          const { userMessage, assistantMessage } = await res.json();
+          setMessages((prev) => [
+            ...prev.filter((m) => m.id !== optimisticMsg.id),
+            userMessage,
+            assistantMessage,
+          ]);
+        }
       }
     } finally {
       setSending(false);
+      setStreamingText("");
     }
   }
 
@@ -106,7 +162,7 @@ export default function HRAgentPage() {
   const suggestedPrompts = [
     "Cek deadline compliance bulan ini",
     "Hitung iuran BPJS untuk karyawan baru",
-    "Buatkan kontrak PKWT untuk posisi Marketing",
+    "Jelaskan aturan THR menurut regulasi terbaru",
     "Karyawan mana yang kontraknya akan habis?",
   ];
 
@@ -120,8 +176,8 @@ export default function HRAgentPage() {
         <div className="flex-1">
           <div className="text-sm font-semibold">HR Agent</div>
           <div className="text-[10px] text-tertiary flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-amber animate-pulse" />
-            Menunggu setup OpenClaw
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-teal" />
+            Online — Hybrid Mode
           </div>
         </div>
 
@@ -150,7 +206,7 @@ export default function HRAgentPage() {
                 <Sparkles className="h-8 w-8 text-brand-indigo opacity-60" />
               </div>
               <h3 className="text-sm font-semibold mb-1">
-                Halo! Saya HR Agent.
+                Halo! Saya Hana, HR Agent kamu.
               </h3>
               <p className="text-xs text-tertiary mb-4">
                 Tanyakan tentang compliance, dokumen HR, atau regulasi ketenagakerjaan Indonesia.
@@ -160,6 +216,7 @@ export default function HRAgentPage() {
                 {suggestedPrompts.map((prompt) => (
                   <button
                     key={prompt}
+                    type="button"
                     onClick={() => setInput(prompt)}
                     className="text-left text-[11px] p-2.5 rounded-xl bg-brand-indigo/[0.04] border border-brand-indigo/[0.08] hover:bg-brand-indigo/[0.08] transition-colors text-muted-foreground"
                   >
@@ -194,14 +251,20 @@ export default function HRAgentPage() {
                   >
                     <div className="whitespace-pre-wrap">{msg.content}</div>
                     <div
-                      className={`text-[9px] mt-1 ${
+                      className={`flex items-center gap-1.5 mt-1 ${
                         msg.role === "user" ? "text-white/60" : "text-tertiary"
                       }`}
                     >
-                      {new Date(msg.created_at).toLocaleTimeString("id-ID", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      <span className="text-[9px]">
+                        {new Date(msg.created_at).toLocaleTimeString("id-ID", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      {msg.role === "assistant" &&
+                        (msg.metadata as Record<string, unknown>)?.route === "direct" && (
+                          <Zap className="h-2.5 w-2.5 text-brand-amber" />
+                        )}
                     </div>
                   </div>
 
@@ -213,13 +276,33 @@ export default function HRAgentPage() {
                 </div>
               ))}
 
-              {sending && (
+              {/* Streaming message */}
+              {streamingText && (
+                <div className="flex gap-3 justify-start">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0 mt-0.5">
+                    <Bot className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="max-w-[75%] rounded-2xl rounded-bl-md px-4 py-2.5 bg-white/70 border border-white/80 text-foreground text-sm leading-relaxed">
+                    <div className="whitespace-pre-wrap">{streamingText}</div>
+                    <div className="flex items-center gap-1 mt-1">
+                      <Zap className="h-2.5 w-2.5 text-brand-amber" />
+                      <span className="text-[9px] text-brand-amber">Streaming...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Loading indicator (non-streaming) */}
+              {sending && !streamingText && (
                 <div className="flex gap-3 justify-start">
                   <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0">
                     <Bot className="h-4 w-4 text-white" />
                   </div>
                   <div className="bg-white/70 border border-white/80 rounded-2xl rounded-bl-md px-4 py-3">
-                    <Loader2 className="h-4 w-4 animate-spin text-brand-indigo" />
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-brand-indigo" />
+                      <span className="text-xs text-tertiary">Agent sedang memproses...</span>
+                    </div>
                   </div>
                 </div>
               )}
