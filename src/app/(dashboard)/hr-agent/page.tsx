@@ -183,8 +183,12 @@ export default function HRAgentPage() {
           });
 
           if (uploadRes.ok) {
-            const { url, filename } = await uploadRes.json();
-            fileContext = `\n\n[File terlampir: ${filename} — ${url}]`;
+            const { filename: uploadedName, extractedText } = await uploadRes.json();
+            if (extractedText) {
+              fileContext = `\n\n--- Isi file: ${uploadedName} ---\n${extractedText}\n--- Akhir file ---`;
+            } else {
+              fileContext = `\n\n[File terlampir: ${uploadedName} — konten tidak bisa diekstrak]`;
+            }
           }
         } catch {
           // Upload failed, continue without file
