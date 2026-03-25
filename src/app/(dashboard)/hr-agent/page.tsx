@@ -29,6 +29,7 @@ export default function HRAgentPage() {
   const [streamingText, setStreamingText] = useState("");
   const [sessionId, setSessionId] = useState(() => generateSessionId());
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
+  const [agentStatus, setAgentStatus] = useState<"online" | "offline" | "hybrid">("hybrid");
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pendingActionRef = useRef<string | null>(null);
@@ -49,6 +50,34 @@ export default function HRAgentPage() {
       fetchMessages();
     }
   }, [fetchMessages, tenantLoading, selectedTenantId]);
+
+  // Fetch agent status
+  useEffect(() => {
+    if (!selectedTenantId) return;
+
+    async function checkStatus() {
+      try {
+        const res = await fetch(`/api/agents/status?tenant_id=${selectedTenantId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const hrAgent = data.find((h: { agent_type: string }) => h.agent_type === "hr_agent");
+          if (hrAgent?.status === "online") {
+            setAgentStatus("online");
+          } else if (hrAgent) {
+            setAgentStatus("offline");
+          } else {
+            setAgentStatus("hybrid");
+          }
+        }
+      } catch {
+        setAgentStatus("hybrid");
+      }
+    }
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 15_000);
+    return () => clearInterval(interval);
+  }, [selectedTenantId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -220,8 +249,20 @@ export default function HRAgentPage() {
           <div className="flex-1">
             <div className="text-sm font-semibold">HR Agent</div>
             <div className="text-[10px] text-tertiary flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-teal" />
-              Online — Hybrid Mode
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  agentStatus === "online"
+                    ? "bg-brand-teal shadow-[0_0_4px_rgba(38,198,166,0.5)]"
+                    : agentStatus === "hybrid"
+                      ? "bg-brand-amber"
+                      : "bg-gray-300"
+                }`}
+              />
+              {agentStatus === "online"
+                ? "Online — Full Agent"
+                : agentStatus === "hybrid"
+                  ? "Hybrid — Direct API"
+                  : "Offline"}
             </div>
           </div>
 

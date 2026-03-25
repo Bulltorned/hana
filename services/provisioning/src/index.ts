@@ -6,7 +6,7 @@ import { gatewayRouter } from "./routes/gateway.js";
 import { adminRouter } from "./routes/admin.js";
 import { webhookRouter } from "./routes/webhook.js";
 import { errorHandler } from "./middleware/error-handler.js";
-import { checkStaleness } from "./services/heartbeat.js";
+import { checkStaleness, syncContainerHealth } from "./services/heartbeat.js";
 import { startComplianceScheduler } from "./services/compliance-scheduler.js";
 import {
   generateComplianceForTenant,
@@ -52,6 +52,14 @@ app.use(errorHandler);
 // ── Start server ────────────────────────────────────
 app.listen(config.PORT, () => {
   logger.info({ port: config.PORT }, "🚀 Provisioning service started");
+
+  // Sync container health → heartbeat table (every 30s)
+  syncContainerHealth().catch(() => {});
+  setInterval(() => {
+    syncContainerHealth().catch((err) => {
+      logger.error({ error: err.message }, "Container health sync failed");
+    });
+  }, 30_000);
 
   // Start heartbeat staleness checker (every 60s)
   setInterval(() => {

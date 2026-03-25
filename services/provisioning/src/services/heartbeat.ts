@@ -83,3 +83,40 @@ export async function getHeartbeat(
 
   return data;
 }
+
+/**
+ * Sync container health with heartbeat table.
+ * Checks all running containers and updates their heartbeat status.
+ * Should be called on a 30-second interval.
+ */
+export async function syncContainerHealth(): Promise<void> {
+  const { listAgentContainers } = await import("../lib/docker.js");
+
+  try {
+    const containers = await listAgentContainers();
+
+    for (const container of containers) {
+      const isRunning = container.state === "running";
+
+      await recordHeartbeat({
+        tenant_id: container.tenantId,
+        agent_type: "hr_agent",
+        status: isRunning ? "online" : "offline",
+        model: "anthropic/claude-sonnet-4-20250514",
+        metadata: {
+          container_id: container.containerId,
+          container_state: container.state,
+        },
+      });
+    }
+
+    if (containers.length > 0) {
+      logger.info(
+        { count: containers.length, online: containers.filter((c) => c.state === "running").length },
+        "Container health synced"
+      );
+    }
+  } catch (err: any) {
+    logger.error({ error: err.message }, "Failed to sync container health");
+  }
+}
