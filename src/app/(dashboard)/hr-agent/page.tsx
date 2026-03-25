@@ -183,11 +183,14 @@ export default function HRAgentPage() {
           });
 
           if (uploadRes.ok) {
-            const { filename: uploadedName, extractedText } = await uploadRes.json();
-            if (extractedText) {
-              fileContext = `\n\n--- Isi file: ${uploadedName} ---\n${extractedText}\n--- Akhir file ---`;
+            const uploadData = await uploadRes.json();
+            if (uploadData.image) {
+              // Image: pass base64 data to chat API
+              fileContext = `\n\n__IMAGE_DATA__${JSON.stringify(uploadData.image)}__END_IMAGE__`;
+            } else if (uploadData.extractedText) {
+              fileContext = `\n\n--- Isi file: ${uploadData.filename} ---\n${uploadData.extractedText}\n--- Akhir file ---`;
             } else {
-              fileContext = `\n\n[File terlampir: ${uploadedName} — konten tidak bisa diekstrak]`;
+              fileContext = `\n\n[File terlampir: ${uploadData.filename} — konten tidak bisa diekstrak]`;
             }
           }
         } catch {

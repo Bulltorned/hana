@@ -71,7 +71,22 @@ export async function POST(request: Request) {
     } else if (ext === "xls" || ext === "xlsx") {
       extractedText = "[File Excel — konten tidak bisa diekstrak secara otomatis. Silakan jelaskan isi file.]";
     } else if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
-      extractedText = "[File gambar — agent tidak bisa membaca konten visual secara langsung. Silakan jelaskan apa yang ada di gambar.]";
+      // Images: return base64 for Claude Vision API
+      const base64 = buffer.toString("base64");
+      const mediaType = file.type || `image/${ext === "jpg" ? "jpeg" : ext}`;
+
+      return NextResponse.json({
+        url: publicUrl,
+        filename: file.name,
+        path: uploadData.path,
+        size: file.size,
+        type: file.type,
+        extractedText: "",
+        image: {
+          base64,
+          mediaType,
+        },
+      });
     }
 
     // Truncate very long text (max ~8000 chars to fit in context)

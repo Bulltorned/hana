@@ -128,12 +128,27 @@ export async function POST(request: Request) {
         content: m.content,
       }));
 
+      // Extract image data if present
+      let imageData: { base64: string; mediaType: string } | undefined;
+      let textContent = content;
+
+      const imageMatch = content.match(/__IMAGE_DATA__(.+?)__END_IMAGE__/);
+      if (imageMatch) {
+        try {
+          imageData = JSON.parse(imageMatch[1]);
+          textContent = content.replace(/__IMAGE_DATA__.+?__END_IMAGE__/, "").trim();
+        } catch {
+          // Failed to parse image data, continue with text only
+        }
+      }
+
       // Stream response
       const stream = await streamQAResponse(
-        content,
+        textContent,
         tenantName,
         context,
-        history
+        history,
+        imageData
       );
 
       // We need to also save the final message to Supabase

@@ -141,7 +141,8 @@ export async function streamQAResponse(
   content: string,
   tenantName: string,
   tenantContext: string,
-  history: ChatHistoryMessage[] = []
+  history: ChatHistoryMessage[] = [],
+  imageData?: { base64: string; mediaType: string }
 ): Promise<ReadableStream<Uint8Array>> {
   const systemPrompt = buildSystemPrompt(tenantName, tenantContext);
 
@@ -153,15 +154,34 @@ export async function streamQAResponse(
 
   // Build conversation messages (last 10 for context)
   const recentHistory = history.slice(-10);
+
+  // Build the user message content (text + optional image)
+  let userContent: Anthropic.MessageParam["content"];
+  if (imageData) {
+    userContent = [
+      {
+        type: "image" as const,
+        source: {
+          type: "base64" as const,
+          media_type: imageData.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: imageData.base64,
+        },
+      },
+      { type: "text" as const, text: truncatedContent || "Apa yang kamu lihat di gambar ini?" },
+    ];
+  } else {
+    userContent = truncatedContent;
+  }
+
   const messages: Anthropic.MessageParam[] = [
     ...recentHistory.map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
     })),
-    { role: "user" as const, content: truncatedContent },
+    { role: "user" as const, content: userContent },
   ];
 
-  console.log(`[streamQA] content length: ${truncatedContent.length}, history: ${recentHistory.length}, system: ${systemPrompt.length}`);
+  console.log(`[streamQA] content length: ${truncatedContent.length}, history: ${recentHistory.length}, system: ${systemPrompt.length}, hasImage: ${!!imageData}`);
 
   const stream = await anthropic.messages.stream({
     model: "claude-sonnet-4-20250514",
