@@ -56,43 +56,91 @@ gatewayRouter.post("/send", async (req, res) => {
 
     logger.info({ tenant_id, sendResult }, "chat.send result");
 
-    // 2. Wait for agent to process, then fetch history
-    // Poll chat.history until we get the assistant response
+    // 2. Wait for agent to fully complete, then collect all text
     let assistantContent = "";
     let attempts = 0;
-    const maxAttempts = 30; // 30 * 2s = 60s max wait
+    const maxAttempts = 60; // 60 * 3s = 180s max wait (agent can take time for multi-step)
 
     while (attempts < maxAttempts) {
-      await new Promise((r) => setTimeout(r, 2000)); // Wait 2s
+      await new Promise((r) => setTimeout(r, 3000)); // Wait 3s between polls
       attempts++;
 
       const history = await openclawGatewayCall(tenant_id, "chat.history", {
         sessionKey,
-      }, { timeout: 10000 }) as Record<string, unknown>;
+      }, { timeout: 15000 }) as Record<string, unknown>;
 
       const messages = (history.messages ?? []) as Array<Record<string, unknown>>;
 
-      // Find the last assistant message with text content (not tool calls)
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i];
+      if (messages.length === 0) {
+        logger.info({ tenant_id, attempts }, "No messages yet...");
+        continue;
+      }
+
+      // Check if the LAST message is an assistant message with stopReason "stop"
+      // This means the agent has fully finished its agentic loop
+      const lastMsg = messages[messages.length - 1];
+      const isComplete = lastMsg.role === "assistant" &&
+        (lastMsg.stopReason === "stop" || lastMsg.stopReason === "end_turn");
+
+      if (!isComplete) {
+        // Agent is still processing (tool calls, thinking, etc.)
+        // Extract what step the agent is on for logging
+        let currentStep = "processing";
+        if (lastMsg.role === "assistant") {
+          const content = lastMsg.content as Array<Record<string, unknown>>;
+          const toolCall = content?.find((c) => c.type === "toolCall");
+          if (toolCall) {
+            currentStep = `calling tool: ${(toolCall as Record<string, unknown>).name}`;
+          }
+        } else if (lastMsg.role === "toolResult") {
+          currentStep = `received tool result: ${lastMsg.toolName}`;
+        }
+
+        logger.info({ tenant_id, attempts, currentStep }, "Agent still working...");
+        continue;
+      }
+
+      // Agent is done! Collect ALL text from ALL assistant messages
+      // (agent may have sent intermediate text between tool calls)
+      const textParts: string[] = [];
+      for (const msg of messages) {
         if (msg.role === "assistant") {
           const content = msg.content as Array<Record<string, unknown>>;
-          const textBlock = content?.find((c) => c.type === "text");
-          if (textBlock?.text) {
-            assistantContent = textBlock.text as string;
-            break;
+          if (content) {
+            for (const block of content) {
+              if (block.type === "text" && block.text) {
+                textParts.push(block.text as string);
+              }
+            }
           }
         }
       }
 
-      if (assistantContent) break;
-
-      logger.info({ tenant_id, attempts }, "Waiting for agent response...");
+      assistantContent = textParts.join("\n\n");
+      break;
     }
 
     if (!assistantContent) {
-      res.status(504).json({ error: "Agent did not respond in time" });
-      return;
+      // Even if we timed out, try to get whatever text the agent produced
+      const history = await openclawGatewayCall(tenant_id, "chat.history", {
+        sessionKey,
+      }, { timeout: 15000 }) as Record<string, unknown>;
+
+      const messages = (history.messages ?? []) as Array<Record<string, unknown>>;
+      const textParts: string[] = [];
+      for (const msg of messages) {
+        if (msg.role === "assistant") {
+          const content = msg.content as Array<Record<string, unknown>>;
+          if (content) {
+            for (const block of content) {
+              if (block.type === "text" && block.text) {
+                textParts.push(block.text as string);
+              }
+            }
+          }
+        }
+      }
+      assistantContent = textParts.join("\n\n") || "Agent membutuhkan waktu lebih lama. Silakan cek kembali atau coba lagi.";
     }
 
     // 3. Save assistant message to Supabase chat_messages
