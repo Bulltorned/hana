@@ -28,6 +28,7 @@ export default function HRAgentPage() {
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [sessionId, setSessionId] = useState(() => generateSessionId());
+  const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pendingActionRef = useRef<string | null>(null);
@@ -176,6 +177,7 @@ export default function HRAgentPage() {
     } finally {
       setSending(false);
       setStreamingText("");
+      setSidebarRefresh((n) => n + 1);
     }
   }
 
@@ -203,6 +205,7 @@ export default function HRAgentPage() {
             activeSessionId={sessionId}
             onSelectSession={handleSelectSession}
             onNewSession={handleNewSession}
+            refreshTrigger={sidebarRefresh}
           />
         </div>
       )}

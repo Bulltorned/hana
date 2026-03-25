@@ -57,3 +57,29 @@ export async function GET(request: Request) {
 
   return NextResponse.json(sessions);
 }
+
+export async function DELETE(request: Request) {
+  const supabase = await createClient();
+  const { searchParams } = new URL(request.url);
+  const sessionId = searchParams.get("session_id");
+  const tenantId = searchParams.get("tenant_id");
+
+  if (!sessionId || !tenantId) {
+    return NextResponse.json(
+      { error: "session_id and tenant_id required" },
+      { status: 400 }
+    );
+  }
+
+  const { error } = await supabase
+    .from("chat_messages")
+    .delete()
+    .eq("session_id", sessionId)
+    .eq("tenant_id", tenantId);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, MessageSquare, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 
@@ -18,6 +19,7 @@ interface ChatSessionSidebarProps {
   activeSessionId: string;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
+  refreshTrigger?: number;
 }
 
 export function ChatSessionSidebar({
@@ -25,9 +27,11 @@ export function ChatSessionSidebar({
   activeSessionId,
   onSelectSession,
   onNewSession,
+  refreshTrigger,
 }: ChatSessionSidebarProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchSessions = useCallback(async () => {
     if (!tenantId) return;
@@ -44,13 +48,41 @@ export function ChatSessionSidebar({
 
   useEffect(() => {
     fetchSessions();
-  }, [fetchSessions]);
+  }, [fetchSessions, refreshTrigger]);
 
-  // Refresh sessions when active session changes (new messages)
+  // Auto-refresh every 10s
   useEffect(() => {
     const interval = setInterval(fetchSessions, 10000);
     return () => clearInterval(interval);
   }, [fetchSessions]);
+
+  async function handleDelete(sessionId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+
+    if (deletingId) return;
+    setDeletingId(sessionId);
+
+    try {
+      const res = await fetch(
+        `/api/chat/sessions?session_id=${sessionId}&tenant_id=${tenantId}`,
+        { method: "DELETE" }
+      );
+
+      if (res.ok) {
+        toast.success("Chat berhasil dihapus");
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+
+        // If deleting active session, create new one
+        if (sessionId === activeSessionId) {
+          onNewSession();
+        }
+      } else {
+        toast.error("Gagal menghapus chat");
+      }
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="w-[220px] shrink-0 flex flex-col gap-2">
@@ -110,6 +142,16 @@ export function ChatSessionSidebar({
                       {session.messageCount} pesan
                     </div>
                   </div>
+
+                  {/* Delete button */}
+                  <button
+                    type="button"
+                    onClick={(e) => handleDelete(session.id, e)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-brand-coral/10 shrink-0"
+                    title="Hapus chat"
+                  >
+                    <Trash2 className="h-3 w-3 text-brand-coral" />
+                  </button>
                 </div>
               </button>
             );
