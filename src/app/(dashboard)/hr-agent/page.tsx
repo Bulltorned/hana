@@ -3,11 +3,11 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-
 import { TenantSelector } from "@/components/shared/tenant-selector";
+import { ChatMessageContent } from "@/components/chat/chat-message-content";
+import { ChatSessionSidebar } from "@/components/chat/chat-session-sidebar";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { ChatMessage } from "@/lib/types";
-import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { Bot, Send, Loader2, Sparkles, User, Zap } from "lucide-react";
 
 function generateSessionId(): string {
@@ -27,9 +27,10 @@ export default function HRAgentPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [sessionId] = useState(() => generateSessionId());
+  const [sessionId, setSessionId] = useState(() => generateSessionId());
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pendingActionRef = useRef<string | null>(null);
 
   const fetchMessages = useCallback(async () => {
     if (!selectedTenantId) return;
@@ -52,7 +53,20 @@ export default function HRAgentPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
 
-  const pendingActionRef = useRef<string | null>(null);
+  function handleNewSession() {
+    const newId = generateSessionId();
+    setSessionId(newId);
+    setMessages([]);
+    setStreamingText("");
+    setInput("");
+  }
+
+  function handleSelectSession(id: string) {
+    setSessionId(id);
+    setMessages([]);
+    setStreamingText("");
+    setInput("");
+  }
 
   function handleActionClick(prompt: string) {
     pendingActionRef.current = prompt;
@@ -76,7 +90,6 @@ export default function HRAgentPage() {
     setSending(true);
     setStreamingText("");
 
-    // Optimistic: add user message immediately
     const optimisticMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
       tenant_id: selectedTenantId,
@@ -102,7 +115,6 @@ export default function HRAgentPage() {
       const chatRoute = res.headers.get("X-Chat-Route");
 
       if (chatRoute === "direct") {
-        // Streaming response — read SSE events
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
         let fullText = "";
@@ -126,15 +138,15 @@ export default function HRAgentPage() {
                     fullText = data.fullText;
                   }
                 } catch {
-                  // Skip unparseable lines
+                  // Skip
                 }
               }
             }
           }
         }
 
-        // Replace streaming with final message
-        const userMsgId = res.headers.get("X-User-Message-Id") ?? optimisticMsg.id;
+        const userMsgId =
+          res.headers.get("X-User-Message-Id") ?? optimisticMsg.id;
         const finalAssistantMsg: ChatMessage = {
           id: `assistant-${Date.now()}`,
           tenant_id: selectedTenantId,
@@ -152,7 +164,6 @@ export default function HRAgentPage() {
         ]);
         setStreamingText("");
       } else {
-        // JSON response (OpenClaw path)
         if (res.ok) {
           const { userMessage, assistantMessage } = await res.json();
           setMessages((prev) => [
@@ -183,190 +194,225 @@ export default function HRAgentPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-3 h-[calc(100vh-140px)]">
-      {/* Header */}
-      <div className="glass rounded-[var(--radius-xl)] p-4 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center">
-          <Bot className="h-5 w-5 text-white" />
-        </div>
-        <div className="flex-1">
-          <div className="text-sm font-semibold">HR Agent</div>
-          <div className="text-[10px] text-tertiary flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-teal" />
-            Online — Hybrid Mode
-          </div>
-        </div>
-
-        {isOperator && (
-          <TenantSelector
-            tenants={tenants}
-            selectedTenantId={selectedTenantId}
-            onSelect={setSelectedTenantId}
+    <div className="flex gap-3 h-[calc(100vh-140px)]">
+      {/* Session Sidebar */}
+      {selectedTenantId && (
+        <div className="glass rounded-[var(--radius-xl)] p-3 hidden lg:block">
+          <ChatSessionSidebar
+            tenantId={selectedTenantId}
+            activeSessionId={sessionId}
+            onSelectSession={handleSelectSession}
+            onNewSession={handleNewSession}
           />
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Chat Area */}
-      <div className="glass rounded-[var(--radius-xl)] flex-1 flex flex-col overflow-hidden">
-        {!selectedTenantId ? (
-          <div className="flex-1 flex items-center justify-center text-tertiary text-sm">
-            <div className="text-center">
-              <Bot className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p>Pilih tenant untuk memulai chat.</p>
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col gap-3 min-w-0">
+        {/* Header */}
+        <div className="glass rounded-[var(--radius-xl)] p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center">
+            <Bot className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1">
+            <div className="text-sm font-semibold">HR Agent</div>
+            <div className="text-[10px] text-tertiary flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-teal" />
+              Online — Hybrid Mode
             </div>
           </div>
-        ) : messages.length === 0 && !sending ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center max-w-md px-6">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-indigo/10 to-brand-violet/10 flex items-center justify-center mx-auto mb-4">
-                <Sparkles className="h-8 w-8 text-brand-indigo opacity-60" />
-              </div>
-              <h3 className="text-sm font-semibold mb-1">
-                Halo! Saya Hana, HR Agent kamu.
-              </h3>
-              <p className="text-xs text-tertiary mb-4">
-                Tanyakan tentang compliance, dokumen HR, atau regulasi ketenagakerjaan Indonesia.
-              </p>
 
-              <div className="grid grid-cols-2 gap-2">
-                {suggestedPrompts.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => setInput(prompt)}
-                    className="text-left text-[11px] p-2.5 rounded-xl bg-brand-indigo/[0.04] border border-brand-indigo/[0.08] hover:bg-brand-indigo/[0.08] transition-colors text-muted-foreground"
+          {/* Mobile new chat */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNewSession}
+            className="lg:hidden text-xs h-8"
+          >
+            Chat Baru
+          </Button>
+
+          {isOperator && (
+            <TenantSelector
+              tenants={tenants}
+              selectedTenantId={selectedTenantId}
+              onSelect={setSelectedTenantId}
+            />
+          )}
+        </div>
+
+        {/* Chat Area */}
+        <div className="glass rounded-[var(--radius-xl)] flex-1 flex flex-col overflow-hidden">
+          {!selectedTenantId ? (
+            <div className="flex-1 flex items-center justify-center text-tertiary text-sm">
+              <div className="text-center">
+                <Bot className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                <p>Pilih tenant untuk memulai chat.</p>
+              </div>
+            </div>
+          ) : messages.length === 0 && !sending ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center max-w-md px-6">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-indigo/10 to-brand-violet/10 flex items-center justify-center mx-auto mb-4">
+                  <Sparkles className="h-8 w-8 text-brand-indigo opacity-60" />
+                </div>
+                <h3 className="text-sm font-semibold mb-1">
+                  Halo! Saya Hana, HR Agent kamu.
+                </h3>
+                <p className="text-xs text-tertiary mb-4">
+                  Tanyakan tentang compliance, dokumen HR, atau regulasi
+                  ketenagakerjaan Indonesia.
+                </p>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {suggestedPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => {
+                        pendingActionRef.current = prompt;
+                        setInput(prompt);
+                      }}
+                      className="text-left text-[11px] p-2.5 rounded-xl bg-brand-indigo/[0.04] border border-brand-indigo/[0.08] hover:bg-brand-indigo/[0.08] transition-colors text-muted-foreground"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-5" ref={scrollRef}>
+              <div className="space-y-4 max-w-2xl mx-auto">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex gap-3 ${
+                      msg.role === "user" ? "justify-end" : "justify-start"
+                    }`}
                   >
-                    {prompt}
-                  </button>
+                    {msg.role === "assistant" && (
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0 mt-0.5">
+                        <Bot className="h-4 w-4 text-white" />
+                      </div>
+                    )}
+
+                    <div
+                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-gradient-to-r from-brand-indigo to-brand-violet text-white rounded-br-md"
+                          : "bg-white/70 border border-white/80 text-foreground rounded-bl-md"
+                      }`}
+                    >
+                      {msg.role === "assistant" ? (
+                        <ChatMessageContent
+                          content={msg.content}
+                          onActionClick={handleActionClick}
+                        />
+                      ) : (
+                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                      )}
+                      <div
+                        className={`flex items-center gap-1.5 mt-1 ${
+                          msg.role === "user"
+                            ? "text-white/60"
+                            : "text-tertiary"
+                        }`}
+                      >
+                        <span className="text-[9px]">
+                          {new Date(msg.created_at).toLocaleTimeString(
+                            "id-ID",
+                            { hour: "2-digit", minute: "2-digit" }
+                          )}
+                        </span>
+                        {msg.role === "assistant" &&
+                          (msg.metadata as Record<string, unknown>)?.route ===
+                            "direct" && (
+                            <Zap className="h-2.5 w-2.5 text-brand-amber" />
+                          )}
+                      </div>
+                    </div>
+
+                    {msg.role === "user" && (
+                      <div className="w-8 h-8 rounded-lg bg-brand-indigo/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <User className="h-4 w-4 text-brand-indigo" />
+                      </div>
+                    )}
+                  </div>
                 ))}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-5" ref={scrollRef}>
-            <div className="space-y-4 max-w-2xl mx-auto">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex gap-3 ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  {msg.role === "assistant" && (
+
+                {/* Streaming message */}
+                {streamingText && (
+                  <div className="flex gap-3 justify-start">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0 mt-0.5">
                       <Bot className="h-4 w-4 text-white" />
                     </div>
-                  )}
-
-                  <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                      msg.role === "user"
-                        ? "bg-gradient-to-r from-brand-indigo to-brand-violet text-white rounded-br-md"
-                        : "bg-white/70 border border-white/80 text-foreground rounded-bl-md"
-                    }`}
-                  >
-                    {msg.role === "assistant" ? (
+                    <div className="max-w-[75%] rounded-2xl rounded-bl-md px-4 py-2.5 bg-white/70 border border-white/80 text-foreground text-sm leading-relaxed">
                       <ChatMessageContent
-                        content={msg.content}
-                        onActionClick={handleActionClick}
+                        content={streamingText}
+                        isStreaming={true}
                       />
-                    ) : (
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
-                    )}
-                    <div
-                      className={`flex items-center gap-1.5 mt-1 ${
-                        msg.role === "user" ? "text-white/60" : "text-tertiary"
-                      }`}
-                    >
-                      <span className="text-[9px]">
-                        {new Date(msg.created_at).toLocaleTimeString("id-ID", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      {msg.role === "assistant" &&
-                        (msg.metadata as Record<string, unknown>)?.route === "direct" && (
-                          <Zap className="h-2.5 w-2.5 text-brand-amber" />
-                        )}
+                      <div className="flex items-center gap-1 mt-1">
+                        <Zap className="h-2.5 w-2.5 text-brand-amber" />
+                        <span className="text-[9px] text-brand-amber">
+                          Streaming...
+                        </span>
+                      </div>
                     </div>
                   </div>
-
-                  {msg.role === "user" && (
-                    <div className="w-8 h-8 rounded-lg bg-brand-indigo/10 flex items-center justify-center shrink-0 mt-0.5">
-                      <User className="h-4 w-4 text-brand-indigo" />
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Streaming message */}
-              {streamingText && (
-                <div className="flex gap-3 justify-start">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0 mt-0.5">
-                    <Bot className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="max-w-[75%] rounded-2xl rounded-bl-md px-4 py-2.5 bg-white/70 border border-white/80 text-foreground text-sm leading-relaxed">
-                    <ChatMessageContent
-                      content={streamingText}
-                      isStreaming={true}
-                    />
-                    <div className="flex items-center gap-1 mt-1">
-                      <Zap className="h-2.5 w-2.5 text-brand-amber" />
-                      <span className="text-[9px] text-brand-amber">Streaming...</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Loading indicator (non-streaming) */}
-              {sending && !streamingText && (
-                <div className="flex gap-3 justify-start">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0">
-                    <Bot className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="bg-white/70 border border-white/80 rounded-2xl rounded-bl-md px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin text-brand-indigo" />
-                      <span className="text-xs text-tertiary">Agent sedang memproses...</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Scroll anchor */}
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-        )}
-
-        {/* Input */}
-        {selectedTenantId && (
-          <div className="p-4 border-t border-brand-indigo/[0.06]">
-            <div className="flex gap-2 max-w-2xl mx-auto">
-              <Textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ketik pertanyaan HR..."
-                rows={1}
-                className="resize-none min-h-[40px] max-h-[120px]"
-                disabled={sending}
-              />
-              <Button
-                onClick={handleSend}
-                disabled={!input.trim() || sending}
-                size="icon"
-                className="shrink-0 h-10 w-10 bg-gradient-to-r from-brand-indigo to-brand-violet text-white"
-              >
-                {sending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
                 )}
-              </Button>
+
+                {/* Loading indicator */}
+                {sending && !streamingText && (
+                  <div className="flex gap-3 justify-start">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0">
+                      <Bot className="h-4 w-4 text-white" />
+                    </div>
+                    <div className="bg-white/70 border border-white/80 rounded-2xl rounded-bl-md px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-brand-indigo" />
+                        <span className="text-xs text-tertiary">
+                          Agent sedang memproses...
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* Input */}
+          {selectedTenantId && (
+            <div className="p-4 border-t border-brand-indigo/[0.06]">
+              <div className="flex gap-2 max-w-2xl mx-auto">
+                <Textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ketik pertanyaan HR..."
+                  rows={1}
+                  className="resize-none min-h-[40px] max-h-[120px]"
+                  disabled={sending}
+                />
+                <Button
+                  onClick={handleSend}
+                  disabled={!input.trim() || sending}
+                  size="icon"
+                  className="shrink-0 h-10 w-10 bg-gradient-to-r from-brand-indigo to-brand-violet text-white"
+                >
+                  {sending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
