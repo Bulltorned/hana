@@ -10,20 +10,38 @@ const anthropic = new Anthropic({
 
 const CLASSIFY_SYSTEM = `You classify HR messages. Reply ONLY with "qa" or "action". Nothing else.
 
-qa = question, explanation, advice, calculation, information request, greeting, general chat
-action = generate document, create file, send message/email/whatsapp, execute a task, modify data, anything requiring tools or file I/O
+qa = question, explanation, advice, calculation, information request, greeting, general chat, reviewing/analyzing a document, asking about file content, summarizing
+action = create/add/insert data, update/edit existing data, delete/archive data, generate document/file, send message/email/whatsapp, import/bulk upload data, execute a database operation
 
-Examples:
+Key rule: READ/ANALYZE/REVIEW/CHECK/EXPLAIN → qa. WRITE/CREATE/UPDATE/DELETE/IMPORT/SEND → action.
+
+Examples (qa):
 - "Apa deadline BPJS bulan ini?" → qa
 - "Berapa iuran BPJS Kesehatan?" → qa
 - "Jelaskan aturan THR" → qa
 - "Halo" → qa
 - "Siapa kamu?" → qa
+- "Cek dokumen ini ada info berguna?" → qa
+- "Apa isi file ini?" → qa
+- "Review dokumen ini" → qa
+- "Analisis data karyawan" → qa
+- "Siapa saja karyawan yang kontraknya mau habis?" → qa
+- "Berapa total karyawan aktif?" → qa
+- "Rangkum isi dokumen ini" → qa
+
+Examples (action):
 - "Buatkan kontrak PKWT untuk Budi" → action
 - "Generate surat peringatan untuk Andi" → action
 - "Kirim reminder ke karyawan" → action
 - "Buat laporan assessment" → action
-- "Update data karyawan Ahmad" → action`;
+- "Update data karyawan Ahmad" → action
+- "Tambahkan karyawan baru: Andi, Backend Dev" → action
+- "Import semua karyawan dari file ini" → action
+- "Hapus data karyawan Budi" → action
+- "Mark compliance BPJS sebagai selesai" → action
+- "Buat siklus assessment Q2" → action
+- "Update gaji karyawan dari file ini" → action
+- "Arsipkan karyawan yang sudah resign" → action`;
 
 export async function classifyMessage(
   content: string
@@ -127,6 +145,12 @@ export async function streamQAResponse(
 ): Promise<ReadableStream<Uint8Array>> {
   const systemPrompt = buildSystemPrompt(tenantName, tenantContext);
 
+  // Truncate content if too long (file extractions can be huge)
+  const maxContentLength = 12000;
+  const truncatedContent = content.length > maxContentLength
+    ? content.slice(0, maxContentLength) + "\n\n[... konten terpotong karena terlalu panjang ...]"
+    : content;
+
   // Build conversation messages (last 10 for context)
   const recentHistory = history.slice(-10);
   const messages: Anthropic.MessageParam[] = [
@@ -134,8 +158,10 @@ export async function streamQAResponse(
       role: m.role as "user" | "assistant",
       content: m.content,
     })),
-    { role: "user" as const, content },
+    { role: "user" as const, content: truncatedContent },
   ];
+
+  console.log(`[streamQA] content length: ${truncatedContent.length}, history: ${recentHistory.length}, system: ${systemPrompt.length}`);
 
   const stream = await anthropic.messages.stream({
     model: "claude-sonnet-4-20250514",
