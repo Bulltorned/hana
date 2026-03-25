@@ -75,11 +75,38 @@ function buildSystemPrompt(
   const compliance = loadSkill("compliance");
   const helpdesk = loadSkill("hr-helpdesk");
 
+  const actionInstructions = `
+---
+# FORMAT AKSI
+
+Jika dalam jawabanmu ada rekomendasi yang bisa ditindaklanjuti (generate dokumen, cek data, kirim reminder, dll), tambahkan di akhir pesan dengan format berikut:
+
+:::actions
+- [Label tombol yang singkat](prompt yang akan dikirim sebagai pesan baru)
+- [Label kedua](prompt kedua)
+:::
+
+Contoh:
+:::actions
+- [Generate Kontrak PKWT](Buatkan kontrak PKWT untuk karyawan ini)
+- [Cek Deadline Compliance](Cek semua deadline compliance bulan ini)
+- [Hitung Iuran BPJS](Hitung detail iuran BPJS Kesehatan untuk semua karyawan)
+:::
+
+ATURAN:
+- Maksimal 3 aksi per pesan
+- Label singkat (2-4 kata)
+- Prompt harus jelas dan actionable
+- Hanya tambahkan jika memang relevan — tidak setiap pesan butuh aksi
+- JANGAN tambahkan aksi untuk pertanyaan sederhana yang sudah dijawab tuntas
+`;
+
   return [
     identity,
     tenantContext ? `\n---\n# KONTEKS PERUSAHAAN\n${tenantContext}` : "",
     compliance ? `\n---\n${compliance}` : "",
     helpdesk ? `\n---\n${helpdesk}` : "",
+    actionInstructions,
   ]
     .filter(Boolean)
     .join("\n");

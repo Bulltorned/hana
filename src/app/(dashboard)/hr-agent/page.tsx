@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { TenantSelector } from "@/components/shared/tenant-selector";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { ChatMessage } from "@/lib/types";
+import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { Bot, Send, Loader2, Sparkles, User, Zap } from "lucide-react";
 
 function generateSessionId(): string {
@@ -50,6 +51,22 @@ export default function HRAgentPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
+
+  const pendingActionRef = useRef<string | null>(null);
+
+  function handleActionClick(prompt: string) {
+    pendingActionRef.current = prompt;
+    setInput(prompt);
+  }
+
+  // Auto-send when input is set from action click
+  useEffect(() => {
+    if (pendingActionRef.current && input === pendingActionRef.current && !sending) {
+      pendingActionRef.current = null;
+      handleSend();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input]);
 
   async function handleSend() {
     if (!input.trim() || !selectedTenantId || sending) return;
@@ -248,7 +265,14 @@ export default function HRAgentPage() {
                         : "bg-white/70 border border-white/80 text-foreground rounded-bl-md"
                     }`}
                   >
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    {msg.role === "assistant" ? (
+                      <ChatMessageContent
+                        content={msg.content}
+                        onActionClick={handleActionClick}
+                      />
+                    ) : (
+                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                    )}
                     <div
                       className={`flex items-center gap-1.5 mt-1 ${
                         msg.role === "user" ? "text-white/60" : "text-tertiary"
@@ -282,7 +306,10 @@ export default function HRAgentPage() {
                     <Bot className="h-4 w-4 text-white" />
                   </div>
                   <div className="max-w-[75%] rounded-2xl rounded-bl-md px-4 py-2.5 bg-white/70 border border-white/80 text-foreground text-sm leading-relaxed">
-                    <div className="whitespace-pre-wrap">{streamingText}</div>
+                    <ChatMessageContent
+                      content={streamingText}
+                      isStreaming={true}
+                    />
                     <div className="flex items-center gap-1 mt-1">
                       <Zap className="h-2.5 w-2.5 text-brand-amber" />
                       <span className="text-[9px] text-brand-amber">Streaming...</span>
