@@ -8,7 +8,7 @@ import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { ChatSessionSidebar } from "@/components/chat/chat-session-sidebar";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { ChatMessage } from "@/lib/types";
-import { Bot, Send, Loader2, Sparkles, User, Zap } from "lucide-react";
+import { Bot, Send, Loader2, Sparkles, User, Zap, Square, Paperclip, X } from "lucide-react";
 
 function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -30,9 +30,12 @@ export default function HRAgentPage() {
   const [sessionId, setSessionId] = useState(() => generateSessionId());
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [agentStatus, setAgentStatus] = useState<"online" | "offline" | "hybrid">("hybrid");
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pendingActionRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchMessages = useCallback(async () => {
     if (!selectedTenantId) return;
@@ -112,34 +115,91 @@ export default function HRAgentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [input]);
 
+  function handleTerminate() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setSending(false);
+    setStreamingText("");
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Max 10MB
+      if (file.size > 10 * 1024 * 1024) {
+        return;
+      }
+      setAttachedFile(file);
+    }
+    // Reset input so same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   async function handleSend() {
     if (!input.trim() || !selectedTenantId || sending) return;
 
     const content = input.trim();
+    const file = attachedFile;
     setInput("");
+    setAttachedFile(null);
     setSending(true);
     setStreamingText("");
+
+    // Create abort controller for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Build display content (include file name if attached)
+    const displayContent = file
+      ? `${content}\n\n📎 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`
+      : content;
 
     const optimisticMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
       tenant_id: selectedTenantId,
       session_id: sessionId,
       role: "user",
-      content,
+      content: displayContent,
       metadata: {},
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimisticMsg]);
 
     try {
+      // If file attached, upload to Supabase Storage first
+      let fileContext = "";
+      if (file) {
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("tenant_id", selectedTenantId);
+
+          const uploadRes = await fetch("/api/chat/upload", {
+            method: "POST",
+            body: formData,
+            signal: controller.signal,
+          });
+
+          if (uploadRes.ok) {
+            const { url, filename } = await uploadRes.json();
+            fileContext = `\n\n[File terlampir: ${filename} — ${url}]`;
+          }
+        } catch {
+          // Upload failed, continue without file
+        }
+      }
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tenant_id: selectedTenantId,
           session_id: sessionId,
-          content,
+          content: content + fileContext,
         }),
+        signal: controller.signal,
       });
 
       const chatRoute = res.headers.get("X-Chat-Route");
@@ -203,7 +263,22 @@ export default function HRAgentPage() {
           ]);
         }
       }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") {
+        // User terminated — add a system message
+        const terminateMsg: ChatMessage = {
+          id: `system-${Date.now()}`,
+          tenant_id: selectedTenantId,
+          session_id: sessionId,
+          role: "assistant",
+          content: "⏹️ Proses dihentikan oleh user.",
+          metadata: { terminated: true },
+          created_at: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, terminateMsg]);
+      }
     } finally {
+      abortControllerRef.current = null;
       setSending(false);
       setStreamingText("");
       setSidebarRefresh((n) => n + 1);
@@ -431,28 +506,76 @@ export default function HRAgentPage() {
           {/* Input */}
           {selectedTenantId && (
             <div className="p-4 border-t border-brand-indigo/[0.06]">
+              {/* File attachment preview */}
+              {attachedFile && (
+                <div className="flex items-center gap-2 mb-2 max-w-2xl mx-auto px-1">
+                  <div className="flex items-center gap-2 text-xs bg-brand-indigo/[0.06] rounded-lg px-3 py-1.5">
+                    <Paperclip className="h-3 w-3 text-brand-indigo" />
+                    <span className="truncate max-w-[200px]">{attachedFile.name}</span>
+                    <span className="text-tertiary">
+                      ({(attachedFile.size / 1024).toFixed(1)} KB)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachedFile(null)}
+                      className="text-tertiary hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2 max-w-2xl mx-auto">
+                {/* File upload button */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  onChange={handleFileSelect}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg"
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 h-10 w-10 text-tertiary hover:text-brand-indigo"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+
                 <Textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ketik pertanyaan HR..."
+                  placeholder={sending ? "Agent sedang memproses..." : "Ketik pertanyaan HR..."}
                   rows={1}
                   className="resize-none min-h-[40px] max-h-[120px]"
                   disabled={sending}
                 />
-                <Button
-                  onClick={handleSend}
-                  disabled={!input.trim() || sending}
-                  size="icon"
-                  className="shrink-0 h-10 w-10 bg-gradient-to-r from-brand-indigo to-brand-violet text-white"
-                >
-                  {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
+
+                {sending ? (
+                  <Button
+                    onClick={handleTerminate}
+                    size="icon"
+                    variant="outline"
+                    className="shrink-0 h-10 w-10 border-brand-coral/30 text-brand-coral hover:bg-brand-coral/10"
+                    title="Hentikan proses"
+                  >
+                    <Square className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleSend}
+                    disabled={!input.trim()}
+                    size="icon"
+                    className="shrink-0 h-10 w-10 bg-gradient-to-r from-brand-indigo to-brand-violet text-white"
+                  >
                     <Send className="h-4 w-4" />
-                  )}
-                </Button>
+                  </Button>
+                )}
               </div>
             </div>
           )}
