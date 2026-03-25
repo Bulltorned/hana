@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { TenantSelector } from "@/components/shared/tenant-selector";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { ChatMessage } from "@/lib/types";
@@ -28,6 +28,7 @@ export default function HRAgentPage() {
   const [streamingText, setStreamingText] = useState("");
   const [sessionId] = useState(() => generateSessionId());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = useCallback(async () => {
     if (!selectedTenantId) return;
@@ -47,9 +48,7 @@ export default function HRAgentPage() {
   }, [fetchMessages, tenantLoading, selectedTenantId]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
 
   async function handleSend() {
@@ -227,7 +226,7 @@ export default function HRAgentPage() {
             </div>
           </div>
         ) : (
-          <ScrollArea className="flex-1 p-5" ref={scrollRef}>
+          <div className="flex-1 overflow-y-auto p-5" ref={scrollRef}>
             <div className="space-y-4 max-w-2xl mx-auto">
               {messages.map((msg) => (
                 <div
@@ -306,8 +305,11 @@ export default function HRAgentPage() {
                   </div>
                 </div>
               )}
+
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
             </div>
-          </ScrollArea>
+          </div>
         )}
 
         {/* Input */}
