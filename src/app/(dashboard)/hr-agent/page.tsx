@@ -487,7 +487,10 @@ export default function HRAgentPage() {
                           onActionClick={handleActionClick}
                         />
                       ) : (
-                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                        <div className="whitespace-pre-wrap">
+                          {/* Strip base64 image data from display */}
+                          {msg.content.replace(/__IMAGE_DATA__[\s\S]*?__END_IMAGE__/g, "").trim()}
+                        </div>
                       )}
                       <div
                         className={`flex items-center gap-1.5 mt-1 ${
