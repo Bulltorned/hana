@@ -144,7 +144,10 @@ export async function streamQAResponse(
   history: ChatHistoryMessage[] = [],
   imageData?: { base64: string; mediaType: string }
 ): Promise<ReadableStream<Uint8Array>> {
-  const systemPrompt = buildSystemPrompt(tenantName, tenantContext);
+  // Use shorter system prompt for image requests to save context window
+  const systemPrompt = imageData
+    ? `Kamu adalah Hana, HR Agent untuk ${tenantName}. Jawab dalam Bahasa Indonesia. Analisis gambar yang diberikan user dan berikan insight yang berguna untuk HR/perusahaan.`
+    : buildSystemPrompt(tenantName, tenantContext);
 
   // Truncate content if too long (file extractions can be huge)
   const maxContentLength = 12000;
@@ -198,7 +201,9 @@ export async function streamQAResponse(
       try {
         let fullText = "";
 
+        let eventCount = 0;
         for await (const event of stream) {
+          eventCount++;
           if (
             event.type === "content_block_delta" &&
             event.delta.type === "text_delta"
@@ -213,6 +218,8 @@ export async function streamQAResponse(
           }
         }
 
+        console.log(`[streamQA] stream complete: ${eventCount} events, fullText length: ${fullText.length}`);
+
         // Send final event with full text
         controller.enqueue(
           encoder.encode(
@@ -222,6 +229,7 @@ export async function streamQAResponse(
 
         controller.close();
       } catch (err: unknown) {
+        console.error("[streamQA] stream error:", err);
         const errorMessage = err instanceof Error ? err.message : "Unknown error";
         controller.enqueue(
           encoder.encode(
