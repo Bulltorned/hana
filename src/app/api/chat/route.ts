@@ -84,8 +84,8 @@ export async function POST(request: Request) {
   const route = await routeMessage(content, hasImage);
   console.log(`[chat] route: ${route}`);
 
-  // 3a. Non-action routes → Direct Anthropic API with streaming + relevant skill only
-  if (route !== "action") {
+  // 3. ALL routes → Direct Anthropic API with streaming + tools + relevant skill
+  {
     try {
       // Get tenant context
       const { data: tenant } = await supabase
@@ -171,100 +171,12 @@ export async function POST(request: Request) {
         },
       });
     } catch (err: unknown) {
-      // Fall through to OpenClaw if direct API fails
-      console.error("Direct API failed, falling back to OpenClaw:", err);
+      console.error("Direct API failed:", err);
     }
   }
 
-  // 3b. Action → Try OpenClaw first, fallback to Direct API
-  try {
-    const gatewayRes = await fetch(`${PROVISIONING_URL}/gateway/send`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tenant_id,
-        session_id,
-        message: content,
-      }),
-      signal: AbortSignal.timeout(65_000),
-    });
-
-    if (gatewayRes.ok) {
-      const { response: assistantMsg } = await gatewayRes.json();
-
-      return NextResponse.json({
-        userMessage: userMsg,
-        assistantMessage: {
-          ...assistantMsg,
-          metadata: { ...((assistantMsg?.metadata as Record<string, unknown>) ?? {}), route: "openclaw" },
-        },
-      });
-    }
-
-    // OpenClaw failed — fall back to Direct API for this action too
-    console.warn("OpenClaw unavailable for action, falling back to Direct API");
-  } catch {
-    console.warn("OpenClaw unreachable, falling back to Direct API");
-  }
-
-  // 3c. Fallback: Direct API for actions (limited but better than error)
-  try {
-    const { data: tenant } = await supabase
-      .from("tenants")
-      .select("name")
-      .eq("id", tenant_id)
-      .single();
-
-    const { data: settings } = await supabase
-      .from("tenant_settings")
-      .select("kop_surat, signer_name, signer_jabatan")
-      .eq("tenant_id", tenant_id)
-      .single();
-
-    const { count: empCount } = await supabase
-      .from("employees")
-      .select("*", { count: "exact", head: true })
-      .eq("tenant_id", tenant_id)
-      .eq("is_archived", false);
-
-    const kopSurat = settings?.kop_surat as KopSurat | null;
-
-    const { tenantName, context } = buildTenantContext({
-      tenantName: (tenant?.name as string) ?? "Perusahaan",
-      employeeCount: empCount ?? 0,
-      alamat: kopSurat?.alamat,
-      signerName: settings?.signer_name as string | undefined,
-      signerJabatan: settings?.signer_jabatan as string | undefined,
-    });
-
-    const { data: historyData } = await supabase
-      .from("chat_messages")
-      .select("role, content")
-      .eq("tenant_id", tenant_id)
-      .eq("session_id", session_id)
-      .order("created_at", { ascending: true })
-      .limit(10);
-
-    const history: ChatHistoryMessage[] = (historyData ?? []).map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    }));
-
-    const stream = await streamQAResponse(content, tenantName, context, history, undefined, tenant_id);
-    const [clientStream, saveStream] = stream.tee();
-    saveResponseToSupabase(saveStream, supabase, tenant_id, session_id);
-
-    return new Response(clientStream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "X-Chat-Route": "direct",
-        "X-User-Message-Id": userMsg.id,
-      },
-    });
-  } catch {
-    // Everything failed — return error message
+  // 4. If Direct API failed completely — return error message
+  {
     const { data: assistantMsg } = await supabase
       .from("chat_messages")
       .insert({
