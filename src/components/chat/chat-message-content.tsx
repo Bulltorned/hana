@@ -96,6 +96,26 @@ export function ChatMessageContent({
                 {children}
               </blockquote>
             ),
+            table: ({ children }) => (
+              <div className="overflow-x-auto my-2 rounded-lg border border-brand-indigo/[0.08]">
+                <table className="w-full text-xs">{children}</table>
+              </div>
+            ),
+            thead: ({ children }) => (
+              <thead className="bg-brand-indigo/[0.04] border-b border-brand-indigo/[0.08]">
+                {children}
+              </thead>
+            ),
+            tbody: ({ children }) => <tbody className="divide-y divide-brand-indigo/[0.04]">{children}</tbody>,
+            tr: ({ children }) => <tr className="hover:bg-brand-indigo/[0.02]">{children}</tr>,
+            th: ({ children }) => (
+              <th className="px-3 py-2 text-left font-semibold text-[10px] uppercase tracking-wider text-tertiary">
+                {children}
+              </th>
+            ),
+            td: ({ children }) => (
+              <td className="px-3 py-2 text-xs">{children}</td>
+            ),
             hr: () => <hr className="border-brand-indigo/[0.08] my-3" />,
             a: ({ children, href }) => (
               <a

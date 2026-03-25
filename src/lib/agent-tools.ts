@@ -68,7 +68,7 @@ export const ALL_TOOLS: Anthropic.Tool[] = [
   {
     name: "add_employees_bulk",
     description:
-      "Tambahkan beberapa karyawan sekaligus. WAJIB minta konfirmasi user dengan menampilkan tabel data sebelum menjalankan. Gunakan untuk import dari gambar/file.",
+      "Tambahkan beberapa karyawan sekaligus ke database. Gunakan ini untuk import data dari gambar/file. LANGSUNG gunakan tool ini setelah user konfirmasi — JANGAN gunakan escalate_to_background.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -260,7 +260,7 @@ export const ALL_TOOLS: Anthropic.Tool[] = [
   {
     name: "escalate_to_background",
     description:
-      "Eskalasi task ke background processing untuk tugas yang memerlukan waktu lama (generate PDF, complex multi-step). Buat task entry yang bisa user track di Task Board.",
+      "HANYA gunakan untuk tugas yang BENAR-BENAR tidak bisa dilakukan secara langsung, seperti generate PDF file, kirim email/WhatsApp, atau proses yang butuh lebih dari 5 menit. JANGAN gunakan untuk CRUD karyawan, compliance, atau dokumen — gunakan tool spesifik lainnya.",
     input_schema: {
       type: "object" as const,
       properties: {

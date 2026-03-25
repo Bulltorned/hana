@@ -126,10 +126,23 @@ export async function classifyMessage(
 
 const BASE_IDENTITY = `Kamu adalah **Hana**, HR Agent AI untuk perusahaan Indonesia. Kamu membantu tim HRD dengan pertanyaan seputar ketenagakerjaan, compliance, dokumen, dan assessment.
 
-PENTING — Kamu punya TOOLS untuk mengakses dan memodifikasi database:
-- Ketika user meminta data → GUNAKAN tool (search_employees, get_compliance_items, dll). JANGAN jawab "saya tidak bisa akses database."
-- Ketika user meminta aksi (tambah/update/hapus) → GUNAKAN tool yang sesuai. Tapi SELALU tampilkan data dan minta konfirmasi user SEBELUM memanggil tool yang memodifikasi data.
-- Ketika user upload gambar berisi data (daftar karyawan, tabel, dll) → Ekstrak data dari gambar, tampilkan dalam format tabel, lalu tawarkan untuk mengimport menggunakan tool add_employees_bulk.
+PENTING — Kamu punya TOOLS untuk mengakses dan memodifikasi database SECARA LANGSUNG:
+- Ketika user meminta data → LANGSUNG GUNAKAN tool (search_employees, get_compliance_items, dll). JANGAN pernah jawab "saya tidak bisa akses database."
+- Ketika user meminta aksi (tambah/update/hapus):
+  1. PERTAMA: Tampilkan data yang akan diubah dan tanya "Apakah data sudah benar? Ketik 'ya' untuk konfirmasi."
+  2. KEDUA: Setelah user konfirmasi → LANGSUNG panggil tool yang sesuai (add_employee, add_employees_bulk, update_employee, dll)
+  3. JANGAN gunakan escalate_to_background untuk CRUD — itu HANYA untuk generate PDF atau kirim email.
+- Ketika user upload gambar berisi data (daftar karyawan, tabel, dll):
+  1. Ekstrak semua data dari gambar
+  2. Tampilkan dalam format list yang rapi (JANGAN pakai markdown table)
+  3. Tanya: "Saya menemukan X karyawan. Mau saya import semua ke sistem?"
+  4. Setelah user bilang "ya" → LANGSUNG panggil add_employees_bulk
+
+FORMAT OUTPUT untuk data karyawan (JANGAN pakai markdown table):
+Gunakan format list seperti ini:
+1. **Nama** — Jabatan (Status)
+2. **Nama** — Jabatan (Status)
+dst.
 
 Aturan:
 - Jawab dalam Bahasa Indonesia (kecuali user berbicara Inggris)
@@ -413,10 +426,21 @@ export async function streamQAResponse(
         controller.close();
       } catch (err: unknown) {
         console.error("[streamQA] error:", err);
-        const errorMessage = err instanceof Error ? err.message : "Unknown error";
+
+        let userMessage = "Terjadi kesalahan. Silakan coba lagi.";
+        const errMsg = err instanceof Error ? err.message : String(err);
+
+        if (errMsg.includes("overloaded") || errMsg.includes("529")) {
+          userMessage = "⏳ Server AI sedang sibuk. Silakan coba lagi dalam 30 detik.";
+        } else if (errMsg.includes("rate_limit") || errMsg.includes("429")) {
+          userMessage = "⏳ Terlalu banyak permintaan. Silakan tunggu sebentar dan coba lagi.";
+        } else if (errMsg.includes("too long") || errMsg.includes("token")) {
+          userMessage = "📝 Pesan terlalu panjang. Coba persingkat atau bagi menjadi beberapa pesan.";
+        }
+
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ type: "error", error: errorMessage })}\n\n`
+            `data: ${JSON.stringify({ type: "error", error: userMessage })}\n\n`
           )
         );
         controller.close();

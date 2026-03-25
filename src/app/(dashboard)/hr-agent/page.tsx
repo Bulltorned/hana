@@ -28,6 +28,7 @@ export default function HRAgentPage() {
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [toolStatus, setToolStatus] = useState<string | null>(null);
+  const [processSteps, setProcessSteps] = useState<Array<{ status: string; done: boolean }>>([]);
   const [sessionId, setSessionId] = useState(() => generateSessionId());
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [agentStatus, setAgentStatus] = useState<"online" | "offline" | "hybrid">("hybrid");
@@ -149,6 +150,7 @@ export default function HRAgentPage() {
     setSending(true);
     setStreamingText("");
     setToolStatus(null);
+    setProcessSteps([]);
 
     // Create abort controller for this request
     const controller = new AbortController();
@@ -234,15 +236,31 @@ export default function HRAgentPage() {
                   if (data.type === "text") {
                     fullText += data.text;
                     setStreamingText(fullText);
-                    setToolStatus(null); // Clear status when text resumes
+                    setToolStatus(null);
                   } else if (data.type === "status") {
                     setToolStatus(data.status);
+                    // Add to process steps history
+                    setProcessSteps((prev) => {
+                      // Mark previous steps as done
+                      const updated = prev.map((s) => ({ ...s, done: true }));
+                      // Add new step (not done yet)
+                      if (!data.success) {
+                        return [...updated, { status: data.status, done: false }];
+                      }
+                      // If success flag, mark the last step as done
+                      return updated.map((s, i) =>
+                        i === updated.length - 1 ? { ...s, done: true, status: data.status } : s
+                      );
+                    });
                   } else if (data.type === "done") {
                     fullText = data.fullText;
                     setToolStatus(null);
+                    // Mark all steps done
+                    setProcessSteps((prev) => prev.map((s) => ({ ...s, done: true })));
                   } else if (data.type === "error") {
                     fullText += `\n\n❌ ${data.error}`;
                     setStreamingText(fullText);
+                    setToolStatus(null);
                   }
                 } catch {
                   // Skip
@@ -521,33 +539,38 @@ export default function HRAgentPage() {
                   </div>
                 )}
 
-                {/* Loading indicator with contextual status */}
-                {sending && !streamingText && (
+                {/* Process steps + loading indicator */}
+                {sending && (processSteps.length > 0 || !streamingText) && (
                   <div className="flex gap-3 justify-start">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0 mt-0.5">
                       <Bot className="h-4 w-4 text-white" />
                     </div>
-                    <div className="bg-white/70 border border-white/80 rounded-2xl rounded-bl-md px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin text-brand-indigo" />
-                        <span className="text-xs text-tertiary">
-                          {toolStatus ?? "Agent sedang memproses..."}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Tool status during streaming */}
-                {toolStatus && streamingText && (
-                  <div className="flex justify-start ml-11">
-                    <div className="bg-brand-indigo/[0.04] border border-brand-indigo/[0.08] rounded-xl px-3 py-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <Loader2 className="h-3 w-3 animate-spin text-brand-indigo" />
-                        <span className="text-[10px] text-brand-indigo">
-                          {toolStatus}
-                        </span>
-                      </div>
+                    <div className="bg-white/70 border border-white/80 rounded-2xl rounded-bl-md px-4 py-3 min-w-[200px]">
+                      {processSteps.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {processSteps.map((step, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              {step.done ? (
+                                <svg className="h-3.5 w-3.5 text-brand-teal shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              ) : (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-indigo shrink-0" />
+                              )}
+                              <span className={`text-xs ${step.done ? "text-tertiary" : "text-foreground font-medium"}`}>
+                                {step.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-brand-indigo" />
+                          <span className="text-xs text-tertiary">
+                            Agent sedang memproses...
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
