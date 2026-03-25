@@ -195,8 +195,11 @@ export async function streamQAResponse(
   tenantName: string,
   tenantContext: string,
   history: ChatHistoryMessage[] = [],
-  imageData?: { base64: string; mediaType: string }
+  imageData?: { base64: string; mediaType: string },
+  tenantId?: string
 ): Promise<ReadableStream<Uint8Array>> {
+  const { getToolsForRoute, executeTool } = await import("@/lib/agent-tools");
+
   // 1. Route the message
   const route = await routeMessage(content, !!imageData);
   console.log(`[router] message routed to: ${route}`);
@@ -208,16 +211,19 @@ export async function streamQAResponse(
     tenantContext
   );
 
-  // 3. Truncate content if too long
+  // 3. Get tools for this route
+  const tools = tenantId ? getToolsForRoute(imageData ? "image" : route) : [];
+
+  // 4. Truncate content if too long
   const maxContentLength = 12000;
   const truncatedContent = content.length > maxContentLength
     ? content.slice(0, maxContentLength) + "\n\n[... konten terpotong ...]"
     : content;
 
-  // 4. Build conversation messages (last 10 for context)
+  // 5. Build conversation messages (last 10 for context)
   const recentHistory = history.slice(-10);
 
-  // 5. Build user message content (text + optional image)
+  // 6. Build user message content (text + optional image)
   let userContent: Anthropic.MessageParam["content"];
   if (imageData) {
     userContent = [
@@ -243,45 +249,155 @@ export async function streamQAResponse(
     { role: "user" as const, content: userContent },
   ];
 
-  console.log(`[streamQA] route: ${route}, content: ${truncatedContent.length} chars, history: ${recentHistory.length}, system: ${systemPrompt.length} chars, hasImage: ${!!imageData}`);
+  console.log(`[streamQA] route: ${route}, tools: ${tools.length}, content: ${truncatedContent.length} chars, system: ${systemPrompt.length} chars, hasImage: ${!!imageData}`);
 
-  const stream = await anthropic.messages.stream({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages,
-  });
-
-  // Convert to Web ReadableStream with SSE
   const encoder = new TextEncoder();
+  const MAX_TOOL_ROUNDS = 5;
 
   return new ReadableStream({
     async start(controller) {
       try {
         let fullText = "";
-        let eventCount = 0;
+        let currentMessages = [...messages];
+        let toolRound = 0;
 
-        // Send route info as first event
+        // Send route info
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: "route", route })}\n\n`)
         );
 
-        for await (const event of stream) {
-          eventCount++;
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            const text = event.delta.text;
-            fullText += text;
+        // Tool call loop — keeps going until Claude stops requesting tools
+        while (toolRound <= MAX_TOOL_ROUNDS) {
+          const stream = await anthropic.messages.stream({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4096,
+            system: systemPrompt,
+            messages: currentMessages,
+            ...(tools.length > 0 ? { tools } : {}),
+          });
+
+          let hasToolUse = false;
+          const toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
+          const contentBlocks: Anthropic.ContentBlock[] = [];
+
+          for await (const event of stream) {
+            if (event.type === "content_block_delta") {
+              if (event.delta.type === "text_delta") {
+                const text = event.delta.text;
+                fullText += text;
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ type: "text", text })}\n\n`)
+                );
+              } else if (event.delta.type === "input_json_delta") {
+                // Tool input streaming — we'll collect it in content_block_stop
+              }
+            } else if (event.type === "content_block_stop") {
+              // Collect completed content blocks from the final message
+            } else if (event.type === "message_stop") {
+              // Get the final message to check for tool_use blocks
+              const finalMessage = await stream.finalMessage();
+              for (const block of finalMessage.content) {
+                contentBlocks.push(block);
+                if (block.type === "tool_use") {
+                  hasToolUse = true;
+                  toolCalls.push({
+                    id: block.id,
+                    name: block.name,
+                    input: block.input as Record<string, unknown>,
+                  });
+                }
+              }
+            }
+          }
+
+          // If no tool calls, we're done
+          if (!hasToolUse) break;
+
+          // Execute tool calls and send status updates
+          toolRound++;
+          console.log(`[streamQA] tool round ${toolRound}: ${toolCalls.map((t) => t.name).join(", ")}`);
+
+          // Add assistant message with tool calls to conversation
+          currentMessages.push({
+            role: "assistant" as const,
+            content: contentBlocks,
+          });
+
+          // Execute each tool and collect results
+          const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+          for (const tool of toolCalls) {
+            // Send contextual status to frontend
+            const statusMessages: Record<string, string> = {
+              search_employees: "🔍 Mencari data karyawan...",
+              add_employee: "✏️ Menambahkan karyawan baru...",
+              add_employees_bulk: "📊 Mengimpor data karyawan...",
+              update_employee: "✏️ Memperbarui data karyawan...",
+              archive_employee: "🗃️ Mengarsipkan karyawan...",
+              get_compliance_items: "📋 Memeriksa compliance...",
+              mark_compliance_complete: "✅ Menandai compliance selesai...",
+              generate_compliance: "⚙️ Generating compliance items...",
+              create_document_request: "📄 Membuat dokumen...",
+              get_documents: "📂 Mengambil daftar dokumen...",
+              create_assessment_cycle: "📊 Membuat siklus assessment...",
+              get_assessment_cycles: "📊 Mengambil data assessment...",
+              get_dashboard_stats: "📈 Mengambil statistik...",
+              escalate_to_background: "📋 Membuat background task...",
+            };
 
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "text", text })}\n\n`)
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: "status",
+                  status: statusMessages[tool.name] ?? `⚙️ Menjalankan ${tool.name}...`,
+                  tool: tool.name,
+                })}\n\n`
+              )
             );
+
+            // Execute the tool
+            const result = tenantId
+              ? await executeTool(tool.name, tool.input, tenantId)
+              : { success: false, error: "No tenant context", statusMessage: "❌ No tenant" };
+
+            // Send result status
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: "status",
+                  status: result.statusMessage,
+                  tool: tool.name,
+                  success: result.success,
+                })}\n\n`
+              )
+            );
+
+            toolResults.push({
+              type: "tool_result" as const,
+              tool_use_id: tool.id,
+              content: JSON.stringify(result.success ? result.data : { error: result.error }),
+            });
           }
+
+          // Add tool results to conversation
+          currentMessages.push({
+            role: "user" as const,
+            content: toolResults,
+          });
+
+          // Loop continues — Claude will process tool results and either respond or call more tools
         }
 
-        console.log(`[streamQA] complete: ${eventCount} events, ${fullText.length} chars`);
+        if (toolRound > MAX_TOOL_ROUNDS) {
+          fullText += "\n\n⚠️ Proses dihentikan setelah 5 langkah. Silakan ulangi permintaan jika belum selesai.";
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "text", text: "\n\n⚠️ Proses dihentikan setelah 5 langkah." })}\n\n`
+            )
+          );
+        }
+
+        console.log(`[streamQA] complete: ${fullText.length} chars, ${toolRound} tool rounds`);
 
         controller.enqueue(
           encoder.encode(
@@ -291,7 +407,7 @@ export async function streamQAResponse(
 
         controller.close();
       } catch (err: unknown) {
-        console.error("[streamQA] stream error:", err);
+        console.error("[streamQA] error:", err);
         const errorMessage = err instanceof Error ? err.message : "Unknown error";
         controller.enqueue(
           encoder.encode(

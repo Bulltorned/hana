@@ -27,6 +27,7 @@ export default function HRAgentPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState(() => generateSessionId());
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [agentStatus, setAgentStatus] = useState<"online" | "offline" | "hybrid">("hybrid");
@@ -122,6 +123,7 @@ export default function HRAgentPage() {
     }
     setSending(false);
     setStreamingText("");
+    setToolStatus(null);
   }
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -146,6 +148,7 @@ export default function HRAgentPage() {
     setAttachedFile(null);
     setSending(true);
     setStreamingText("");
+    setToolStatus(null);
 
     // Create abort controller for this request
     const controller = new AbortController();
@@ -231,8 +234,15 @@ export default function HRAgentPage() {
                   if (data.type === "text") {
                     fullText += data.text;
                     setStreamingText(fullText);
+                    setToolStatus(null); // Clear status when text resumes
+                  } else if (data.type === "status") {
+                    setToolStatus(data.status);
                   } else if (data.type === "done") {
                     fullText = data.fullText;
+                    setToolStatus(null);
+                  } else if (data.type === "error") {
+                    fullText += `\n\n❌ ${data.error}`;
+                    setStreamingText(fullText);
                   }
                 } catch {
                   // Skip
@@ -511,7 +521,7 @@ export default function HRAgentPage() {
                   </div>
                 )}
 
-                {/* Loading indicator */}
+                {/* Loading indicator with contextual status */}
                 {sending && !streamingText && (
                   <div className="flex gap-3 justify-start">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-indigo to-brand-violet flex items-center justify-center shrink-0">
@@ -521,7 +531,21 @@ export default function HRAgentPage() {
                       <div className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin text-brand-indigo" />
                         <span className="text-xs text-tertiary">
-                          Agent sedang memproses...
+                          {toolStatus ?? "Agent sedang memproses..."}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tool status during streaming */}
+                {toolStatus && streamingText && (
+                  <div className="flex justify-start ml-11">
+                    <div className="bg-brand-indigo/[0.04] border border-brand-indigo/[0.08] rounded-xl px-3 py-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin text-brand-indigo" />
+                        <span className="text-[10px] text-brand-indigo">
+                          {toolStatus}
                         </span>
                       </div>
                     </div>

@@ -144,13 +144,14 @@ export async function POST(request: Request) {
         }
       }
 
-      // Stream response
+      // Stream response (with tools + tenantId for CRUD)
       const stream = await streamQAResponse(
         textContent,
         tenantName,
         context,
         history,
-        imageData
+        imageData,
+        tenant_id
       );
 
       // We need to also save the final message to Supabase
@@ -249,7 +250,7 @@ export async function POST(request: Request) {
       content: m.content,
     }));
 
-    const stream = await streamQAResponse(content, tenantName, context, history);
+    const stream = await streamQAResponse(content, tenantName, context, history, undefined, tenant_id);
     const [clientStream, saveStream] = stream.tee();
     saveResponseToSupabase(saveStream, supabase, tenant_id, session_id);
 
