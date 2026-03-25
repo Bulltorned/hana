@@ -45,19 +45,46 @@ export async function POST(request: Request) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // ── Images: return base64 for Claude Vision ───────
+  // ── Images: resize + compress for Claude Vision ───────
   if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
-    const base64 = buffer.toString("base64");
-    const mediaType = file.type || `image/${ext === "jpg" ? "jpeg" : ext}`;
+    try {
+      const sharp = (await import("sharp")).default;
 
-    return NextResponse.json({
-      url: publicUrl,
-      filename: file.name,
-      size: file.size,
-      type: file.type,
-      extractedText: "",
-      image: { base64, mediaType },
-    });
+      // Resize to max 1024px wide, convert to JPEG quality 80
+      // This keeps images under ~100K tokens
+      const resized = await sharp(buffer)
+        .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+
+      const base64 = resized.toString("base64");
+      const mediaType = "image/jpeg";
+
+      console.log(`[upload] Image resized: ${buffer.length} → ${resized.length} bytes (${(resized.length / 1024).toFixed(0)} KB)`);
+
+      return NextResponse.json({
+        url: publicUrl,
+        filename: file.name,
+        size: file.size,
+        type: file.type,
+        extractedText: "",
+        image: { base64, mediaType },
+      });
+    } catch (err) {
+      console.error("[upload] Image processing failed:", err);
+      // Fallback: try raw base64 if sharp fails
+      const base64 = buffer.toString("base64");
+      const mediaType = file.type || `image/${ext === "jpg" ? "jpeg" : ext}`;
+
+      return NextResponse.json({
+        url: publicUrl,
+        filename: file.name,
+        size: file.size,
+        type: file.type,
+        extractedText: "",
+        image: { base64, mediaType },
+      });
+    }
   }
 
   // ── Documents: extract text ───────────────────────
