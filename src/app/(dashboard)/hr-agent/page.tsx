@@ -299,6 +299,29 @@ export default function HRAgentPage() {
     }
   }
 
+  function handlePaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (blob) {
+          // Convert clipboard blob to File with a name
+          const ext = blob.type.split("/")[1] ?? "png";
+          const file = new File(
+            [blob],
+            `screenshot-${Date.now()}.${ext}`,
+            { type: blob.type }
+          );
+          setAttachedFile(file);
+        }
+        return;
+      }
+    }
+  }
+
   const suggestedPrompts = [
     "Cek deadline compliance bulan ini",
     "Hitung iuran BPJS untuk karyawan baru",
@@ -557,7 +580,8 @@ export default function HRAgentPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={sending ? "Agent sedang memproses..." : "Ketik pertanyaan HR..."}
+                  onPaste={handlePaste}
+                  placeholder={sending ? "Agent sedang memproses..." : "Ketik pertanyaan HR... (Ctrl+V untuk paste screenshot)"}
                   rows={1}
                   className="resize-none min-h-[40px] max-h-[120px]"
                   disabled={sending}
