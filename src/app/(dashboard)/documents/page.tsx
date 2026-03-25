@@ -9,6 +9,7 @@ import { TenantSelector } from "@/components/shared/tenant-selector";
 import { NewDocumentDialog } from "@/components/documents/new-document-dialog";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { DocumentRequest, DocType, DocStatus } from "@/lib/types";
+import { ListSkeleton } from "@/components/shared/list-skeleton";
 import {
   FileText,
   FileCheck,
@@ -113,9 +114,7 @@ export default function DocumentsPage() {
       {/* Document List */}
       <div className="glass rounded-[var(--radius-xl)] overflow-hidden">
         {tenantLoading || loading ? (
-          <div className="p-12 text-center text-tertiary text-sm">
-            Memuat data...
-          </div>
+          <ListSkeleton rows={4} />
         ) : !selectedTenantId ? (
           <div className="p-12 text-center text-tertiary text-sm">
             <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" />

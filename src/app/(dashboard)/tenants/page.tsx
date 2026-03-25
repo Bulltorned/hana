@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { TenantFormDialog } from "@/components/shared/tenant-form-dialog";
 import type { Tenant } from "@/lib/types";
 import { Building2 } from "lucide-react";
+import { ListSkeleton } from "@/components/shared/list-skeleton";
 
 const planLabels: Record<string, string> = {
   trial: "Trial",
@@ -58,9 +59,7 @@ export default function TenantsPage() {
       {/* Table */}
       <div className="glass rounded-[var(--radius-xl)] overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-tertiary text-sm">
-            Memuat data...
-          </div>
+          <ListSkeleton rows={4} />
         ) : tenants.length === 0 ? (
           <div className="p-12 text-center text-tertiary text-sm">
             <Building2 className="h-10 w-10 mx-auto mb-3 opacity-30" />

@@ -11,6 +11,7 @@ import { ComplianceTypeIcon, getComplianceTypeLabel } from "@/components/complia
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import type { ComplianceItem, ComplianceStatus } from "@/lib/types";
 import { toast } from "sonner";
+import { ListSkeleton } from "@/components/shared/list-skeleton";
 import {
   ShieldCheck,
   RefreshCw,
@@ -209,9 +210,7 @@ export default function CompliancePage() {
       {/* List */}
       <div className="glass rounded-[var(--radius-xl)] overflow-hidden">
         {tenantLoading || loading ? (
-          <div className="p-12 text-center text-tertiary text-sm">
-            Memuat data...
-          </div>
+          <ListSkeleton rows={5} />
         ) : !selectedTenantId ? (
           <div className="p-12 text-center text-tertiary text-sm">
             <ShieldCheck className="h-10 w-10 mx-auto mb-3 opacity-30" />

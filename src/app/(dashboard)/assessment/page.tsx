@@ -9,6 +9,7 @@ import { FilterSelect } from "@/components/shared/filter-select";
 import { TenantSelector } from "@/components/shared/tenant-selector";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import { toast } from "sonner";
+import { ListSkeleton } from "@/components/shared/list-skeleton";
 import {
   BarChart3,
   Plus,
@@ -247,9 +248,7 @@ export default function AssessmentPage() {
       {/* Cycle List */}
       <div className="glass rounded-[var(--radius-xl)] overflow-hidden">
         {tenantLoading || loading ? (
-          <div className="p-12 text-center text-tertiary text-sm">
-            Memuat data...
-          </div>
+          <ListSkeleton rows={4} />
         ) : !selectedTenantId ? (
           <div className="p-12 text-center text-tertiary text-sm">
             <BarChart3 className="h-10 w-10 mx-auto mb-3 opacity-30" />
