@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
-  classifyMessage,
+  routeMessage,
   streamQAResponse,
   buildTenantContext,
   type ChatHistoryMessage,
@@ -79,11 +79,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: msgErr.message }, { status: 500 });
   }
 
-  // 2. Classify: Q&A or Action?
-  const classification = await classifyMessage(content);
+  // 2. Route message → which skill/handler?
+  const hasImage = content.includes("__IMAGE_DATA__");
+  const route = await routeMessage(content, hasImage);
+  console.log(`[chat] route: ${route}`);
 
-  // 3a. Q&A → Direct Anthropic API with streaming
-  if (classification === "qa") {
+  // 3a. Non-action routes → Direct Anthropic API with streaming + relevant skill only
+  if (route !== "action") {
     try {
       // Get tenant context
       const { data: tenant } = await supabase

@@ -6,128 +6,181 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// ── Message Classification ──────────────────────────
+// ── Skill Registry ──────────────────────────────────
 
-const CLASSIFY_SYSTEM = `You classify HR messages. Reply ONLY with "qa" or "action". Nothing else.
+const SKILLS_DIR = join(process.cwd(), "skills", "hrd-agent-skills");
 
-qa = question, explanation, advice, calculation, information request, greeting, general chat, reviewing/analyzing a document, asking about file content, summarizing
-action = create/add/insert data, update/edit existing data, delete/archive data, generate document/file, send message/email/whatsapp, import/bulk upload data, execute a database operation
+type SkillRoute =
+  | "general"       // No skill needed — greetings, simple Q&A
+  | "compliance"    // BPJS, PPh21, THR, compliance deadlines
+  | "document"      // Kontrak, surat, document generation
+  | "helpdesk"      // Employee FAQ, leave, payslip, policies
+  | "assessment"    // 360 assessment, performance review
+  | "image"         // Image analysis
+  | "action";       // CRUD operations → route to OpenClaw
 
-Key rule: READ/ANALYZE/REVIEW/CHECK/EXPLAIN → qa. WRITE/CREATE/UPDATE/DELETE/IMPORT/SEND → action.
+const SKILL_MAP: Record<string, string> = {
+  compliance: "compliance",
+  document: "document-drafter",
+  helpdesk: "hr-helpdesk",
+  assessment: "360-assessment",
+};
 
-Examples (qa):
-- "Apa deadline BPJS bulan ini?" → qa
-- "Berapa iuran BPJS Kesehatan?" → qa
-- "Jelaskan aturan THR" → qa
-- "Halo" → qa
-- "Siapa kamu?" → qa
-- "Cek dokumen ini ada info berguna?" → qa
-- "Apa isi file ini?" → qa
-- "Review dokumen ini" → qa
-- "Analisis data karyawan" → qa
-- "Siapa saja karyawan yang kontraknya mau habis?" → qa
-- "Berapa total karyawan aktif?" → qa
-- "Rangkum isi dokumen ini" → qa
+function loadSkill(skillName: string): string {
+  const path = join(SKILLS_DIR, skillName, "SKILL.md");
+  if (existsSync(path)) {
+    const content = readFileSync(path, "utf-8");
+    // Strip YAML frontmatter
+    return content.replace(/^---[\s\S]*?---\n*/m, "");
+  }
+  return "";
+}
 
-Examples (action):
-- "Buatkan kontrak PKWT untuk Budi" → action
-- "Generate surat peringatan untuk Andi" → action
-- "Kirim reminder ke karyawan" → action
-- "Buat laporan assessment" → action
-- "Update data karyawan Ahmad" → action
-- "Tambahkan karyawan baru: Andi, Backend Dev" → action
-- "Import semua karyawan dari file ini" → action
-- "Hapus data karyawan Budi" → action
-- "Mark compliance BPJS sebagai selesai" → action
-- "Buat siklus assessment Q2" → action
-- "Update gaji karyawan dari file ini" → action
-- "Arsipkan karyawan yang sudah resign" → action`;
+// ── Router Agent ────────────────────────────────────
 
-export async function classifyMessage(
-  content: string
-): Promise<"qa" | "action"> {
+const ROUTER_SYSTEM = `You are a message router for an HR Agent. Classify the user's message into ONE category.
+
+Reply with ONLY the category name. Nothing else.
+
+Categories:
+- general → greetings, chitchat, "siapa kamu", simple questions not related to specific HR topics
+- compliance → BPJS, PPh21, pajak, THR, UMP, deadline compliance, regulasi ketenagakerjaan, iuran
+- document → kontrak PKWT/PKWTT, surat peringatan, surat keterangan, offer letter, PHK, draft dokumen
+- helpdesk → cuti, slip gaji, kebijakan perusahaan, SOP, hak karyawan, pertanyaan karyawan
+- assessment → penilaian kinerja, review 360, KPI, assessment cycle, evaluasi
+- image → user sent an image/screenshot to analyze
+- action → user wants to CREATE/ADD/UPDATE/DELETE/IMPORT/GENERATE/SEND data (write operations)
+
+Key rules:
+- READ/CHECK/EXPLAIN/ANALYZE → pick the topic (compliance/document/helpdesk/assessment/general)
+- WRITE/CREATE/UPDATE/DELETE/IMPORT → action
+- If message includes a file/document to REVIEW → pick the topic, NOT action
+- If message includes a file/document to IMPORT/BULK UPDATE → action
+- Image attached → image (unless it's clearly an action request with image)
+
+Examples:
+"Halo" → general
+"Apa deadline BPJS bulan ini?" → compliance
+"Berapa iuran BPJS Kesehatan?" → compliance
+"Jelaskan aturan THR" → compliance
+"Buatkan kontrak PKWT untuk Budi" → action
+"Apa saja yang harus ada di kontrak PKWT?" → document
+"Berapa sisa cuti saya?" → helpdesk
+"Buat assessment Q2" → action
+"Jelaskan proses assessment 360" → assessment
+"Tambah karyawan baru Andi" → action
+"Check gambar ini" → image
+"Import data dari file ini" → action
+"Cek dokumen ini ada info berguna?" → general`;
+
+export type MessageRoute = SkillRoute;
+
+export async function routeMessage(
+  content: string,
+  hasImage: boolean = false
+): Promise<MessageRoute> {
+  // Fast path: if image attached and no clear action intent
+  if (hasImage) {
+    const actionWords = /\b(tambah|create|import|update|delete|hapus|buat|generate|kirim|send)\b/i;
+    if (!actionWords.test(content)) return "image";
+  }
+
   try {
     const response = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 10,
-      system: CLASSIFY_SYSTEM,
+      max_tokens: 15,
+      system: ROUTER_SYSTEM,
       messages: [{ role: "user", content }],
     });
 
     const text =
       response.content[0].type === "text"
         ? response.content[0].text.trim().toLowerCase()
-        : "qa";
+        : "general";
 
-    return text === "action" ? "action" : "qa";
+    // Validate it's a known route
+    const validRoutes: SkillRoute[] = [
+      "general", "compliance", "document", "helpdesk",
+      "assessment", "image", "action",
+    ];
+
+    if (validRoutes.includes(text as SkillRoute)) {
+      return text as SkillRoute;
+    }
+
+    return "general";
   } catch {
-    // Default to qa on classification failure
-    return "qa";
+    return "general";
   }
 }
 
-// ── Skill Loading ───────────────────────────────────
-
-const SKILLS_DIR = join(process.cwd(), "skills", "hrd-agent-skills");
-
-function loadSkill(skillName: string): string {
-  const path = join(SKILLS_DIR, skillName, "SKILL.md");
-  if (existsSync(path)) {
-    // Strip YAML frontmatter
-    const content = readFileSync(path, "utf-8");
-    const stripped = content.replace(/^---[\s\S]*?---\n*/m, "");
-    return stripped;
-  }
-  return "";
+// Keep old classifier as alias for backward compat
+export async function classifyMessage(
+  content: string
+): Promise<"qa" | "action"> {
+  const route = await routeMessage(content);
+  return route === "action" ? "action" : "qa";
 }
 
-function buildSystemPrompt(
-  tenantName: string,
-  tenantContext: string
-): string {
-  const identity = loadSkill("agent-identity")
-    .replace(/\{\{COMPANY_NAME\}\}/g, tenantName)
-    .replace(/\{\{AGENT_NAME\}\}/g, "Hana")
-    .replace(/\{\{CURRENT_DATE\}\}/g, new Date().toLocaleDateString("id-ID"));
+// ── Build System Prompt (per route) ─────────────────
 
-  const compliance = loadSkill("compliance");
-  const helpdesk = loadSkill("hr-helpdesk");
+const BASE_IDENTITY = `Kamu adalah **Hana**, HR Agent AI untuk perusahaan Indonesia. Kamu membantu tim HRD dengan pertanyaan seputar ketenagakerjaan, compliance, dokumen, dan assessment.
 
-  const actionInstructions = `
+Aturan:
+- Jawab dalam Bahasa Indonesia (kecuali user berbicara Inggris)
+- Berikan jawaban yang praktis dan actionable
+- Referensikan regulasi Indonesia yang relevan (UU Cipta Kerja, PP 35/2021, dll)
+- Tanggal hari ini: ${new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}`;
+
+const ACTION_FORMAT = `
 ---
 # FORMAT AKSI
 
-Jika dalam jawabanmu ada rekomendasi yang bisa ditindaklanjuti (generate dokumen, cek data, kirim reminder, dll), tambahkan di akhir pesan dengan format berikut:
+Jika ada rekomendasi yang bisa ditindaklanjuti, tambahkan di akhir:
 
 :::actions
-- [Label tombol yang singkat](prompt yang akan dikirim sebagai pesan baru)
-- [Label kedua](prompt kedua)
+- [Label singkat](prompt yang akan dikirim)
 :::
 
-Contoh:
-:::actions
-- [Generate Kontrak PKWT](Buatkan kontrak PKWT untuk karyawan ini)
-- [Cek Deadline Compliance](Cek semua deadline compliance bulan ini)
-- [Hitung Iuran BPJS](Hitung detail iuran BPJS Kesehatan untuk semua karyawan)
-:::
+Maksimal 3 aksi. Hanya jika relevan.`;
 
-ATURAN:
-- Maksimal 3 aksi per pesan
-- Label singkat (2-4 kata)
-- Prompt harus jelas dan actionable
-- Hanya tambahkan jika memang relevan — tidak setiap pesan butuh aksi
-- JANGAN tambahkan aksi untuk pertanyaan sederhana yang sudah dijawab tuntas
-`;
+function buildRoutedSystemPrompt(
+  route: MessageRoute,
+  tenantName: string,
+  tenantContext: string
+): string {
+  const parts: string[] = [];
 
-  return [
-    identity,
-    tenantContext ? `\n---\n# KONTEKS PERUSAHAAN\n${tenantContext}` : "",
-    compliance ? `\n---\n${compliance}` : "",
-    helpdesk ? `\n---\n${helpdesk}` : "",
-    actionInstructions,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  // 1. Base identity (always, ~300 tokens)
+  parts.push(BASE_IDENTITY.replace("perusahaan Indonesia", tenantName));
+
+  // 2. Tenant context (always, ~200 tokens)
+  if (tenantContext) {
+    parts.push(`\n---\n# KONTEKS PERUSAHAAN\n${tenantContext}`);
+  }
+
+  // 3. Route-specific skill (only the relevant one, ~2-8K tokens)
+  const skillName = SKILL_MAP[route];
+  if (skillName) {
+    const skill = loadSkill(skillName);
+    if (skill) {
+      // Truncate skill to max 8000 chars to stay within limits
+      const truncatedSkill = skill.length > 8000
+        ? skill.slice(0, 8000) + "\n\n[... skill content truncated ...]"
+        : skill;
+      parts.push(`\n---\n${truncatedSkill}`);
+    }
+  }
+
+  // 4. Image-specific instruction
+  if (route === "image") {
+    parts.push("\n---\nAnalisis gambar yang diberikan user. Berikan insight yang berguna untuk HR/perusahaan.");
+  }
+
+  // 5. Action format (always, ~300 tokens)
+  parts.push(ACTION_FORMAT);
+
+  return parts.join("\n");
 }
 
 // ── Streaming Q&A Response ──────────────────────────
@@ -144,21 +197,27 @@ export async function streamQAResponse(
   history: ChatHistoryMessage[] = [],
   imageData?: { base64: string; mediaType: string }
 ): Promise<ReadableStream<Uint8Array>> {
-  // Use shorter system prompt for image requests to save context window
-  const systemPrompt = imageData
-    ? `Kamu adalah Hana, HR Agent untuk ${tenantName}. Jawab dalam Bahasa Indonesia. Analisis gambar yang diberikan user dan berikan insight yang berguna untuk HR/perusahaan.`
-    : buildSystemPrompt(tenantName, tenantContext);
+  // 1. Route the message
+  const route = await routeMessage(content, !!imageData);
+  console.log(`[router] message routed to: ${route}`);
 
-  // Truncate content if too long (file extractions can be huge)
+  // 2. Build system prompt with only the relevant skill
+  const systemPrompt = buildRoutedSystemPrompt(
+    imageData ? "image" : route,
+    tenantName,
+    tenantContext
+  );
+
+  // 3. Truncate content if too long
   const maxContentLength = 12000;
   const truncatedContent = content.length > maxContentLength
-    ? content.slice(0, maxContentLength) + "\n\n[... konten terpotong karena terlalu panjang ...]"
+    ? content.slice(0, maxContentLength) + "\n\n[... konten terpotong ...]"
     : content;
 
-  // Build conversation messages (last 10 for context)
+  // 4. Build conversation messages (last 10 for context)
   const recentHistory = history.slice(-10);
 
-  // Build the user message content (text + optional image)
+  // 5. Build user message content (text + optional image)
   let userContent: Anthropic.MessageParam["content"];
   if (imageData) {
     userContent = [
@@ -184,7 +243,7 @@ export async function streamQAResponse(
     { role: "user" as const, content: userContent },
   ];
 
-  console.log(`[streamQA] content length: ${truncatedContent.length}, history: ${recentHistory.length}, system: ${systemPrompt.length}, hasImage: ${!!imageData}`);
+  console.log(`[streamQA] route: ${route}, content: ${truncatedContent.length} chars, history: ${recentHistory.length}, system: ${systemPrompt.length} chars, hasImage: ${!!imageData}`);
 
   const stream = await anthropic.messages.stream({
     model: "claude-sonnet-4-20250514",
@@ -193,15 +252,20 @@ export async function streamQAResponse(
     messages,
   });
 
-  // Convert Anthropic stream to Web ReadableStream
+  // Convert to Web ReadableStream with SSE
   const encoder = new TextEncoder();
 
   return new ReadableStream({
     async start(controller) {
       try {
         let fullText = "";
-
         let eventCount = 0;
+
+        // Send route info as first event
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: "route", route })}\n\n`)
+        );
+
         for await (const event of stream) {
           eventCount++;
           if (
@@ -211,16 +275,14 @@ export async function streamQAResponse(
             const text = event.delta.text;
             fullText += text;
 
-            // Send as SSE event
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({ type: "text", text })}\n\n`)
             );
           }
         }
 
-        console.log(`[streamQA] stream complete: ${eventCount} events, fullText length: ${fullText.length}`);
+        console.log(`[streamQA] complete: ${eventCount} events, ${fullText.length} chars`);
 
-        // Send final event with full text
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify({ type: "done", fullText })}\n\n`
