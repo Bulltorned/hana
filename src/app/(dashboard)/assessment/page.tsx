@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FilterSelect } from "@/components/shared/filter-select";
 import { TenantSelector } from "@/components/shared/tenant-selector";
+import { CycleStatusBadge } from "@/components/assessment/cycle-status-badge";
+import { ResponseProgress } from "@/components/assessment/response-progress";
 import { useTenantContext } from "@/lib/hooks/use-tenant-context";
 import { toast } from "sonner";
 import { ListSkeleton } from "@/components/shared/list-skeleton";
@@ -16,43 +19,23 @@ import {
   Users,
   Calendar,
   CheckCircle,
-  Clock,
   FileText,
   Target,
+  Trash2,
 } from "lucide-react";
 
-interface AssessmentCycle {
+interface AssessmentCycleWithStats {
   id: string;
+  tenant_id: string;
   name: string;
   period: string;
-  status: "draft" | "active" | "completed";
   deadline: string;
+  status: "draft" | "active" | "completed";
   participant_count: number;
+  rater_count: number;
   response_count: number;
   created_at: string;
 }
-
-const statusConfig: Record<
-  string,
-  { label: string; className: string; icon: typeof Clock }
-> = {
-  draft: {
-    label: "Draft",
-    className: "bg-muted text-muted-foreground",
-    icon: FileText,
-  },
-  active: {
-    label: "Aktif",
-    className:
-      "bg-brand-indigo/10 text-brand-indigo border-brand-indigo/20",
-    icon: Target,
-  },
-  completed: {
-    label: "Selesai",
-    className: "bg-brand-teal/10 text-brand-teal border-brand-teal/20",
-    icon: CheckCircle,
-  },
-};
 
 export default function AssessmentPage() {
   const {
@@ -63,50 +46,89 @@ export default function AssessmentPage() {
     loading: tenantLoading,
   } = useTenantContext();
 
-  const [cycles, setCycles] = useState<AssessmentCycle[]>([]);
+  const [cycles, setCycles] = useState<AssessmentCycleWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("all");
 
   // Create form
   const [newName, setNewName] = useState("");
   const [newPeriod, setNewPeriod] = useState("Q1 2026");
   const [newDeadline, setNewDeadline] = useState("");
+  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    if (!selectedTenantId || tenantLoading) {
+  const fetchCycles = useCallback(async () => {
+    if (!selectedTenantId) {
       setCycles([]);
       setLoading(false);
       return;
     }
 
-    // Mock data for now — will be replaced with real API
-    setLoading(false);
-    setCycles([]);
-  }, [selectedTenantId, tenantLoading]);
+    try {
+      const params = new URLSearchParams({ tenant_id: selectedTenantId });
+      if (filterStatus !== "all") params.set("status", filterStatus);
 
-  function handleCreate() {
-    if (!newName.trim()) {
+      const res = await fetch(`/api/assessment/cycles?${params.toString()}`);
+      if (res.ok) {
+        setCycles(await res.json());
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedTenantId, filterStatus]);
+
+  useEffect(() => {
+    if (tenantLoading) return;
+    setLoading(true);
+    fetchCycles();
+  }, [fetchCycles, tenantLoading]);
+
+  async function handleCreate() {
+    if (!newName.trim() || !selectedTenantId) {
       toast.error("Nama siklus wajib diisi");
       return;
     }
 
-    // Mock create — will be replaced with real API
-    const newCycle: AssessmentCycle = {
-      id: `cycle-${Date.now()}`,
-      name: newName,
-      period: newPeriod,
-      status: "draft",
-      deadline: newDeadline || new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
-      participant_count: 0,
-      response_count: 0,
-      created_at: new Date().toISOString(),
-    };
+    setCreating(true);
+    try {
+      const res = await fetch("/api/assessment/cycles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: selectedTenantId,
+          name: newName.trim(),
+          period: newPeriod,
+          deadline: newDeadline || null,
+        }),
+      });
 
-    setCycles((prev) => [newCycle, ...prev]);
-    setShowCreate(false);
-    setNewName("");
-    setNewDeadline("");
-    toast.success("Siklus assessment berhasil dibuat");
+      if (res.ok) {
+        toast.success("Siklus assessment berhasil dibuat");
+        setShowCreate(false);
+        setNewName("");
+        setNewDeadline("");
+        fetchCycles();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Gagal membuat siklus");
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDelete(cycleId: string) {
+    const res = await fetch(`/api/assessment/cycles/${cycleId}`, {
+      method: "DELETE",
+    });
+
+    if (res.ok) {
+      toast.success("Siklus berhasil dihapus");
+      fetchCycles();
+    } else {
+      const data = await res.json();
+      toast.error(data.error || "Gagal menghapus siklus");
+    }
   }
 
   // Stats
@@ -171,6 +193,19 @@ export default function AssessmentPage() {
             onSelect={setSelectedTenantId}
           />
         )}
+
+        <FilterSelect
+          value={filterStatus}
+          onChange={setFilterStatus}
+          placeholder="Status"
+          width="w-[140px]"
+          options={[
+            { value: "all", label: "Semua Status" },
+            { value: "draft", label: "Draft" },
+            { value: "active", label: "Aktif" },
+            { value: "completed", label: "Selesai" },
+          ]}
+        />
 
         <div className="flex-1" />
 
@@ -237,9 +272,10 @@ export default function AssessmentPage() {
             <Button
               size="sm"
               onClick={handleCreate}
+              disabled={creating}
               className="bg-gradient-to-r from-brand-indigo to-brand-violet text-white"
             >
-              Buat Siklus
+              {creating ? "Membuat..." : "Buat Siklus"}
             </Button>
           </div>
         </div>
@@ -265,48 +301,43 @@ export default function AssessmentPage() {
           </div>
         ) : (
           <div className="divide-y divide-brand-indigo/[0.06]">
-            {cycles.map((cycle) => {
-              const sc = statusConfig[cycle.status];
-              const StatusIcon = sc.icon;
-              const responseRate =
-                cycle.participant_count > 0
-                  ? Math.round(
-                      (cycle.response_count / cycle.participant_count) * 100
-                    )
-                  : 0;
+            {cycles.map((cycle) => (
+              <div
+                key={cycle.id}
+                className="px-5 py-4 flex items-center gap-4 hover:bg-brand-indigo/[0.02] transition-colors"
+              >
+                <div className="w-10 h-10 rounded-xl bg-brand-indigo/[0.08] flex items-center justify-center shrink-0">
+                  {cycle.status === "active" ? (
+                    <Target className="h-5 w-5 text-brand-indigo" />
+                  ) : cycle.status === "completed" ? (
+                    <CheckCircle className="h-5 w-5 text-brand-teal" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                  )}
+                </div>
 
-              return (
-                <div
-                  key={cycle.id}
-                  className="px-5 py-4 flex items-center gap-4 hover:bg-brand-indigo/[0.02] transition-colors cursor-pointer"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-brand-indigo/[0.08] flex items-center justify-center shrink-0">
-                    <StatusIcon className="h-5 w-5 text-brand-indigo" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/assessment/${cycle.id}`}
+                      className="text-sm font-medium truncate hover:text-brand-indigo transition-colors"
+                    >
+                      {cycle.name}
+                    </Link>
+                    <CycleStatusBadge status={cycle.status} />
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-mono"
+                    >
+                      {cycle.period}
+                    </Badge>
                   </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">
-                        {cycle.name}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] ${sc.className}`}
-                      >
-                        {sc.label}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-mono"
-                      >
-                        {cycle.period}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-[11px] text-tertiary">
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        {cycle.participant_count} peserta
-                      </span>
+                  <div className="flex items-center gap-3 mt-1 text-[11px] text-tertiary">
+                    <span className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      {cycle.participant_count} peserta
+                    </span>
+                    {cycle.deadline && (
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
                         Deadline:{" "}
@@ -316,17 +347,28 @@ export default function AssessmentPage() {
                           year: "numeric",
                         })}
                       </span>
-                      {cycle.participant_count > 0 && (
-                        <span className="flex items-center gap-1">
-                          <BarChart3 className="h-3 w-3" />
-                          Response rate: {responseRate}%
-                        </span>
-                      )}
-                    </div>
+                    )}
+                    {cycle.rater_count > 0 && (
+                      <ResponseProgress
+                        responded={cycle.response_count}
+                        total={cycle.rater_count}
+                      />
+                    )}
                   </div>
                 </div>
-              );
-            })}
+
+                {cycle.status === "draft" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-tertiary hover:text-brand-coral"
+                    onClick={() => handleDelete(cycle.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
