@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
@@ -134,9 +135,10 @@ export default function DocumentsPage() {
               const sc = statusConfig[doc.status];
               const StatusIcon = sc.icon;
               return (
-                <div
+                <Link
                   key={doc.id}
-                  className="px-5 py-4 flex items-center gap-4 hover:bg-brand-indigo/[0.02] transition-colors"
+                  href={`/documents/${doc.id}`}
+                  className="px-5 py-4 flex items-center gap-4 hover:bg-brand-indigo/[0.02] transition-colors cursor-pointer"
                 >
                   <div className="w-10 h-10 rounded-xl bg-brand-indigo/[0.08] flex items-center justify-center shrink-0">
                     <StatusIcon className="h-5 w-5 text-brand-indigo" />
@@ -167,16 +169,17 @@ export default function DocumentsPage() {
                   </div>
 
                   {doc.output_url && (
-                    <a
-                      href={doc.output_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <span
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.open(doc.output_url!, "_blank");
+                      }}
                       className="shrink-0 w-8 h-8 rounded-lg bg-brand-teal/10 flex items-center justify-center hover:bg-brand-teal/20 transition-colors"
                     >
                       <Download className="h-4 w-4 text-brand-teal" />
-                    </a>
+                    </span>
                   )}
-                </div>
+                </Link>
               );
             })}
           </div>
